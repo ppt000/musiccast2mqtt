@@ -1,0 +1,41 @@
+{ "devices":
+[
+    {"id": "NetworkPlayer", "model": "CD-NT670D", "protocol": "YEC", "host": "192.168.1.44",
+     "zones": [{"id": "main", "location": "", "mcid": "main"}],
+     "sources": [{"id": "spotify", "mcid": "spotify"},
+                 {"id": "server", "mcid": "server"},
+                 {"id": "net_radio", "mcid": "net_radio"},
+                 {"id": "tuner", "mcid": "tuner"},
+                 {"id": "cd", "mcid": "cd"}],
+     "feeds": []
+    },
+    {"id": "AVCinemaRoom", "model": "RX-A550", "protocol": "YEC", "host": "192.168.1.42",
+     "zones": [{"id": "main", "location": "cinemaroom", "mcid": "main"}],
+     "sources": [{"id": "spotify", "mcid": "spotify"},
+                 {"id": "server", "mcid": "server"},
+                 {"id": "net_radio", "mcid": "net_radio"},
+                 {"id": "tuner", "mcid": "tuner"}],
+     "feeds": [{"id": "av4", "device_id": "NetworkPlayer", "zone_id": "main", "mcid": "av4"},
+                {"id": "hdmi1", "device_id": "BluRayPlayer", "mcid": "hdmi1"},
+                {"id": "hdmi2", "device_id": "Sky", "mcid": "hdmi2"}
+                ]
+    },
+    {"id": "AVMasterRoom", "model": "RX-V677", "protocol": "YNCA", "host": "192.168.1.59",
+     "zones": [{"id": "main", "location": "masterbedroom"},
+               {"id": "zone2", "location": "masterbathroom"}],
+     "sources": [{"id": "spotify"},
+                 {"id": "server"},
+                 {"id": "net_radio"},
+                 {"id": "tuner"}],
+     "feeds": []
+    },
+    {"id": "AudioMatrix", "model": "CrestronAdagio", "protocol": "CRESNET", "gateway": "cresnet",
+     "zones": [{"id": "channels3and4", "location": "kitchen"},
+               {"id": "channel1", "location": "office"},
+               {"id": "channel2", "location": "diningroom"},
+               {"id": "channel6", "location": "patio"}],
+     "sources": [],
+     "feeds": [{"id": "iPod", "device_id": "AVCinemaRoom", "zone_id": "main"},
+     			{"id": "cd", "device_id": "NetworkPlayer", "zone_id": "main"}]
+    }
+]}

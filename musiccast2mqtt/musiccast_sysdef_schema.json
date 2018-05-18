@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "System description for MusicCast gateway.",
+  "description": "",
+  "type": "object",
+  "properties": {
+    "devices": {
+      "type": "array",
+      "description": "List of devices.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string", "description": "internal identifier of the device"},
+          "model": {"type": "string","description": "model name of the device"},
+          "protocol": {"type": "string","description": "protocol of communication. Use YEC for MusicCast"},
+          "host": {"type": "string", "description": "IP address of the device"},
+          "gateway": {"type": "string", "description": "Name of gateway to access this device."},
+          "zones": {
+            "type": "array",
+            "description": "list of the zones on this device",
+            "items": {
+              "type": "object",
+              "description": "zone description",
+              "properties": {
+                "id": {"type": "string", "description": "internal identifier of the zone"},
+                "location": {"type": "string", "description": "internal name of the location where the zone operates"},
+                "mcid": {"type": "string", "description": "MusicCast id of the zone"}
+              },
+              "required": ["id", "location"]
+            }
+          },
+          "sources": {
+            "type": "array",
+            "description": "list of the sources on this device",
+            "items": {
+              "type": "object",
+              "description": "source description",
+              "properties": {
+                "id": {"type": "string", "description": "internal identifier of the zone"},
+                "mcid": {"type": "string", "description": "MusicCast id of the zone"}
+              },
+              "required": ["id"]
+            }
+          },
+          "feeds": {
+            "type": "array",
+            "description": "list of the feeds on this device",
+            "items": {
+              "type": "object",
+              "description": "feed description",
+              "properties": {
+                "id": {"type": "string", "description": "internal identifier of the zone"},
+                "device_id": {"type": "string", "description": "identifier of the device connected to this input"},
+                "zone_id": {"type": "string", "description": "identifier of the zone connected to this input"},
+                "mcid": {"type": "string", "description": "MusicCast id of the feed = input name"}
+              },
+              "required": ["id", "device_id"]
+            }
+          }
+        },
+        "required": ["id", "zones", "sources", "feeds"],
+        "if": {"properties": {"protocol": {"const": "YEC"}}},
+        "then": {"required": ["host"]}
+      }
+    }
+  },
+  "required": ["devices"]
+}

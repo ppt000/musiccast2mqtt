@@ -1,0 +1,68 @@
+{
+  "root": "oer",
+  "topics": ["oer/+/musiccast/+/+/+/C", "oer/audiovideo/+/+/+/+/C"],
+  "function": {"maptype": "strict",
+    "map": {"audiovideo": "AudioVideo", "lighting": "Lighting"}},
+  "gateway": {"maptype": "loose",
+    "map": {"cbus": "cbus", "cresnet": "cresnet", "dummy": "dummy", "musiccast": "musiccast"}},
+  "location": {"maptype": "strict",
+    "map": {
+      "dining_room": "diningroom",
+      "kitchen": "kitchen",
+      "master_bathroom": "masterbathroom",
+      "office": "office",
+      "terrace": "patio"
+    }
+  },
+  "device": {"maptype": "loose",
+    "map": {
+      "adagio_matrix": "Adagio_Unit",
+      "cdplayer": "CD",
+      "diningrm_keypad": "DiningRm_Keypad",
+      "dvdplayer": "DVD",
+      "ipod": "IPOD",
+      "kitchen_keypad": "Kitchen_Keypad",
+      "office_keypad": "Office_Keypad",
+      "skybox": "SKY",
+      "tuner": "TUNER"
+    }
+  },
+  "sender": {"maptype": "none"},
+  "action": {"maptype": "strict",
+    "map": {
+      "light_off": "LIGHT_OFF",
+      "light_on": "LIGHT_ON",
+      "audio_off": "POWER_OFF",
+      "audio_on": "POWER_ON",
+      "source_cd": "SOURCE_CD",
+      "source_dvd": "SOURCE_DVD",
+      "source_ipod": "SOURCE_IPOD",
+      "source_sky": "SOURCE_SKY",
+      "source_tuner": "SOURCE_TUNER",
+      "set_volume": "SET_VOLUME",
+      "volume_down": "VOL_DN",
+      "volume_up": "VOL_UP",
+      "mute_off": "MUTE_OFF",
+      "mute_on": "MUTE_ON",
+      "mute_toggle": "MUTE_TGL",
+      "get_inputs": "GET_INPUTS",
+      "set_input": "SET_INPUT",
+      "get_sources": "GET_SOURCES",
+      "set_source": "SET_SOURCE",
+      "source_netradio": "SOURCE_NETRADIO",
+      "source_spotify": "SOURCE_SPOTIFY",
+      "cd_back": "CD_BACK",
+      "cd_forward": "CD_FORWARD",
+      "cd_pause": "CD_PAUSE",
+      "cd_play": "CD_PLAY",
+      "cd_stop": "CD_STOP",
+      "spotify_playpause": "SPOTIFY_PLAYPAUSE",
+      "spotify_back": "SPOTIFY_BACK",
+      "spotify_forward": "SPOTIFY_FORWARD",
+      "tuner_preset": "TUNER_PRESET",
+      "netradio_preset": "NETRADIO_PRESET"
+    }
+  },
+  "argkey": {"maptype": "none"},
+  "argvalue": {"maptype": "none"}
+}
