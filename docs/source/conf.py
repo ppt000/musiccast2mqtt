@@ -78,7 +78,7 @@ language = None
 exclude_patterns = []
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = 'monokai'
+pygments_style = 'native'
 
 
 # -- Options for HTML output -------------------------------------------------
