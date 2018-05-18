@@ -1,5 +1,3 @@
-'''A setuptools based setup module.'''
-
 from setuptools import setup, find_packages
 
 from codecs import open
@@ -34,5 +32,6 @@ setup(
     keywords='mqtt gateway Yamaha MusicCast',
     packages=find_packages(),
     install_requires=['mqttgateway >= 0.2'],
+    package_data={'': ['*.conf', '*.json']},
     entry_points={'console_scripts': ['musiccast2mqtt = musiccast2mqtt.musiccast_start:main']}
 )
