@@ -19,12 +19,12 @@ requests to the devices over HTTP (through the `musiccast_comm` module).
 
 '''
 
-import mqtt_gateways.musiccast.musiccast_exceptions as mcx
-import mqtt_gateways.musiccast.musiccast_comm as mcc
-from mqtt_gateways.musiccast.musiccast_data import ACTIONS, EVENTS
-from mqtt_gateways.musiccast.musiccast_device import Device
+import musiccast2mqtt.musiccast_exceptions as mcx
+import musiccast2mqtt.musiccast_comm as mcc
+from musiccast2mqtt.musiccast_data import ACTIONS, EVENTS
+from musiccast2mqtt.musiccast_device import Device
 
-import mqtt_gateways.utils.app_properties as app
+import mqttgateway.utils.app_properties as app
 _logger = app.Properties.get_logger(__name__)
 
 class System(object):

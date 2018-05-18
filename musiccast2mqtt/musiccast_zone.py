@@ -7,10 +7,10 @@ Assumptions on Zones:
 
 import time
 
-import mqtt_gateways.musiccast.musiccast_exceptions as mcx
-from mqtt_gateways.musiccast.musiccast_data import TRANSFORM_ARG
+import musiccast2mqtt.musiccast_exceptions as mcx
+from musiccast2mqtt.musiccast_data import TRANSFORM_ARG
 
-import mqtt_gateways.utils.app_properties as app
+import mqttgateway.utils.app_properties as app
 _logger = app.Properties.get_logger(__name__)
 
 

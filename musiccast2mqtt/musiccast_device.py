@@ -6,12 +6,12 @@ Assumptions on Devices:
   change without the gateway knowing and their state at startup is unknown.
 '''
 import time
-import mqtt_gateways.musiccast.musiccast_exceptions as mcx
-import mqtt_gateways.musiccast.musiccast_comm as mcc
-from mqtt_gateways.musiccast.musiccast_input import Feed, Source
-from mqtt_gateways.musiccast.musiccast_zone import Zone
+import musiccast2mqtt.musiccast_exceptions as mcx
+import musiccast2mqtt.musiccast_comm as mcc
+from musiccast2mqtt.musiccast_input import Feed, Source
+from musiccast2mqtt.musiccast_zone import Zone
 
-import mqtt_gateways.utils.app_properties as app
+import mqttgateway.utils.app_properties as app
 _logger = app.Properties.get_logger(__name__)
 
 

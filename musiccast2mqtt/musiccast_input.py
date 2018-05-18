@@ -4,9 +4,9 @@ Created on 5 May 2018
 @author: PierPaolo
 '''
 
-import mqtt_gateways.musiccast.musiccast_exceptions as mcx
+import musiccast2mqtt.musiccast_exceptions as mcx
 
-import mqtt_gateways.utils.app_properties as app
+import mqttgateway.utils.app_properties as app
 _logger = app.Properties.get_logger(__name__)
 
 class Input(object):

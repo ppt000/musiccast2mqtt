@@ -12,8 +12,8 @@ import json
 import time
 
 
-import mqtt_gateways.musiccast.musiccast_exceptions as mcx
-import mqtt_gateways.utils.app_properties as app
+import musiccast2mqtt.musiccast_exceptions as mcx
+import mqttgateway.utils.app_properties as app
 _logger = app.Properties.get_logger(__name__)
 
 _HTTP_TIMEOUT = 10 # The time-out for the HTTP requests.

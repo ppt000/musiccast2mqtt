@@ -2,11 +2,11 @@
 
 import json
 
-import mqtt_gateways.musiccast.musiccast_exceptions as mcx
-from mqtt_gateways.musiccast.musiccast_system import System
-from mqtt_gateways.musiccast.musiccast_data import ACTIONS
+import musiccast2mqtt.musiccast_exceptions as mcx
+from musiccast2mqtt.musiccast_system import System
+from musiccast2mqtt.musiccast_data import ACTIONS
 
-import mqtt_gateways.utils.app_properties as app
+import mqttgateway.utils.app_properties as app
 _logger = app.Properties.get_logger(__name__)
 
 class musiccastInterface(object):
