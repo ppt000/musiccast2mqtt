@@ -33,6 +33,6 @@ setup(
         ],
     keywords='mqtt gateway Yamaha MusicCast',
     packages=find_packages(),
-    install_requires=['mqttgateway'],
+    install_requires=['mqttgateway >= 0.2'],
     entry_points={'console_scripts': ['musiccast2mqtt = musiccast2mqtt.musiccast_start:main']}
 )
