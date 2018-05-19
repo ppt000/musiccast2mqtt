@@ -71,7 +71,7 @@ Template = \
       "sources": [], # No sources
       "feeds": [
                 {"id": "input1", # Connected to the AV Receiver RX-A550 defined above.
-                 "device_id": "AVCinemaRoom", # HAS to be exactly the same as the id of the
+                 "device_id": "AVLivingRoom", # HAS to be exactly the same as the id of the
                                               #  device, obviously...
                  "zone_id": "Room"}, # The zone used by the connected device to feed this one.
                 {"id": "input2", # Similar case to above.

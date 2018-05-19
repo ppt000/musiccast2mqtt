@@ -1,10 +1,10 @@
 {
-  "root": "oer",
-  "topics": ["oer/+/musiccast/+/+/+/C", "oer/audiovideo/+/+/+/+/C"],
+  "root": "home",
+  "topics": ["home/+/musiccast/+/+/+/C", "home/audiovideo/+/+/+/+/C"],
   "function": {"maptype": "strict",
     "map": {"audiovideo": "AudioVideo", "lighting": "Lighting"}},
   "gateway": {"maptype": "loose",
-    "map": {"cbus": "cbus", "cresnet": "cresnet", "dummy": "dummy", "musiccast": "musiccast"}},
+    "map": {"dummy": "dummy", "musiccast": "musiccast"}},
   "location": {"maptype": "strict",
     "map": {
       "dining_room": "diningroom",
@@ -16,13 +16,8 @@
   },
   "device": {"maptype": "loose",
     "map": {
-      "adagio_matrix": "Adagio_Unit",
       "cdplayer": "CD",
-      "diningrm_keypad": "DiningRm_Keypad",
       "dvdplayer": "DVD",
-      "ipod": "IPOD",
-      "kitchen_keypad": "Kitchen_Keypad",
-      "office_keypad": "Office_Keypad",
       "skybox": "SKY",
       "tuner": "TUNER"
     }
