@@ -119,6 +119,9 @@ class musiccastComm(object):
             conn.close()
             raise mcx.CommsError(''.join(('Can\'t send request. Error:\n\t',
                                           repr(err))))
+        except socket.timeout:
+            conn.close()
+            raise mcx.CommsError('Can\'t send request. Connection timed-out.')
 
         # insert a delay here?
 
