@@ -16,7 +16,7 @@ import musiccast2mqtt.musiccast_exceptions as mcx
 import mqttgateway.utils.app_properties as app
 _logger = app.Properties.get_logger(__name__)
 
-_HTTP_TIMEOUT = 10 # The time-out for the HTTP requests.
+_HTTP_TIMEOUT = 1 # The time-out for the HTTP requests.
 _SOCKET_TIMEOUT = 0.01 # The time-out when checking the socket for incoming events, in seconds.
 
 MCSOCKET = None
