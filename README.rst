@@ -12,8 +12,8 @@ It relies on the ``mqttgateway`` library (documented `here <http://mqttgateway.r
 Installation
 ------------
 
-MusicCast2MQTT is available on pip.  It is preferrable to use the --user option or use a virtual
-environment.
+**MusicCast2MQTT** is available on ``pip``.  It is preferrable to use the ``--user`` option
+or use a virtual environment.
 
 .. code-block:: none
 
@@ -34,4 +34,4 @@ and you should see a bunch of logs on the console.
 
 Next step is to configure the application. Head to the documentation for that.
 
-Comments, issues, suggestions are welcome. :)
+Comments, issues, suggestions are welcome.
