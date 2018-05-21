@@ -32,6 +32,7 @@ but hopefully your ``PATH`` environment variable already points there, so you ca
 
 and you should see a bunch of logs on the console.
 
-Next step is to configure the application. Head to the documentation for that.
+Next step is to configure the application. Head to the
+`documentation <http://musiccast2mqtt.readthedocs.io/>`_ for that.
 
-Comments, issues, suggestions are welcome.
+Any issues, let me know.
