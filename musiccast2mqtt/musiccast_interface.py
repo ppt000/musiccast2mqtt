@@ -79,6 +79,7 @@ class musiccastInterface(object):
             if not msg.iscmd: continue # ignore status messages
 
             # determine if the message is 'assertive'
+            assertive = False
             if msg.gateway == 'musiccast': # TODO: there are other cases to deal with
                 assertive = True
 
