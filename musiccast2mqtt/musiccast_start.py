@@ -2,10 +2,10 @@
 
 import os.path
 
-_PROJECT_NAME = 'musiccast2mqtt'
+_APP_NAME = 'musiccast2mqtt'
 
 import mqttgateway.utils.app_properties as app
-app.Properties.init(os.path.realpath(__file__), app_name=_PROJECT_NAME)
+app.Properties.init(app_path=os.path.realpath(__file__), app_name=_APP_NAME)
 
 # import the module that initiates and starts the gateway
 import mqttgateway.gateway.start_gateway as start_g
