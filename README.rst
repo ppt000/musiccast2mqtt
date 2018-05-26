@@ -5,7 +5,6 @@
 
 The documentation in ``docs/source`` is formatted to be read in
 `ReadTheDocs <http://musiccast2mqtt.readthedocs.io/>`_.
-Head there to browse it.
 
 Welcome to MusicCast2MQTT
 =========================
