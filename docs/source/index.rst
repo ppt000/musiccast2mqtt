@@ -14,7 +14,7 @@ The MQTT syntax required is flexible and configurable.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Contents
 
     MusicCast gateway to MQTT <musiccast_doc>
     Usage <musiccast_usage>
