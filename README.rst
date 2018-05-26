@@ -1,7 +1,8 @@
 
-.. warning::
+..
+    warning::
+    This version is still under development.
     The first version will be 0.1.
-    Until then this is still a work in progress.
 
 The documentation in ``docs/source`` is formatted to be read in
 `ReadTheDocs <http://musiccast2mqtt.readthedocs.io/>`_.
