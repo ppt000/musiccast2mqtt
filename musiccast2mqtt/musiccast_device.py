@@ -1,9 +1,9 @@
 '''
-Assumptions on Devices:
 
+
+Assumptions on Devices:
 - the gateway knows NOTHING about the state of non MusicCast at any point in time; their state can
   change without the gateway knowing and their state at startup is unknown.
-
 '''
 import time
 import musiccast2mqtt.musiccast_exceptions as mcx
