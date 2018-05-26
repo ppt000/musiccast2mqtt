@@ -1,8 +1,5 @@
 
-..
-    warning::
-    This version is still under development.
-    The first version will be 0.1.
+.. include:: docs/source/banner.txt
 
 The documentation in ``docs/source`` is formatted to be read in
 `ReadTheDocs <http://musiccast2mqtt.readthedocs.io/>`_.
@@ -19,7 +16,7 @@ Installation
 **MusicCast2MQTT** is available on ``pip``.  It is preferrable to use the ``--user`` option
 or use a virtual environment.
 
-.. code-block:: none
+.. code-block::
 
     pip install --user musicast2mqtt
 
@@ -30,7 +27,7 @@ Execution
 ``pip`` install en *entry-point* called ``musiccast2mqtt``.  Its location depends on your system
 but hopefully your ``PATH`` environment variable already points there, so you can type anywhere:
 
-.. code-block:: none
+.. code-block::
 
     musiccast2mqtt
 

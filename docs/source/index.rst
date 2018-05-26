@@ -1,10 +1,7 @@
 .. musiccast2mqtt documentation master file, created by
    sphinx-quickstart on Fri May 18 06:09:21 2018.
 
-
-.. warning::
-    The first version will be 0.1.
-    Until then this is still a work in progress.
+.. include:: banner.txt
 
 Welcome to musiccast2mqtt's documentation!
 ==========================================
