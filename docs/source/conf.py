@@ -20,9 +20,6 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../..'))
 
-# the next line will probably fail in ReadTheDocs; mqttgateway needs to be installed as a library
-sys.path.insert(0, os.path.abspath('../../../mqttgateway'))
-
 import musiccast2mqtt.version
 
 # -- Project information -----------------------------------------------------
