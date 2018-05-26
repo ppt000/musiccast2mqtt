@@ -1,5 +1,5 @@
 
-.. include:: banner.txt
+.. include:: docs/source/banner.txt
 
 The documentation in ``docs/source`` is formatted to be read in
 `ReadTheDocs <http://musiccast2mqtt.readthedocs.io/>`_.
