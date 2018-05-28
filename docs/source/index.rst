@@ -1,16 +1,7 @@
 .. musiccast2mqtt documentation master file, created by
    sphinx-quickstart on Fri May 18 06:09:21 2018.
 
-.. include:: banner.txt
-
-Welcome to musiccast2mqtt's documentation!
-==========================================
-
-**musiccast2mqtt** is an interface between Yamaha MusicCast devices and MQTT.
-It is based on the `mqttgateway <http://mqttgateway.readthedocs.io/en/latest/>`_ library.
-It translates incoming MQTT messages into MusicCast commands.
-The MQTT syntax required is flexible and configurable.
-
+.. include:: readme.rst
 
 .. toctree::
    :maxdepth: 2
