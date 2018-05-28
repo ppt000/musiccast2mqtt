@@ -29,6 +29,7 @@ class musiccastInterface(object):
         # Keep the message lists locally
         self._msgl_in = msglist_in
         self._msgl_out = msglist_out
+        self._msg = None # 'current' message being processed
 
         # compute the system definition file path
         try: jsonpath = params['sysdefpath']
@@ -57,7 +58,7 @@ class musiccastInterface(object):
                                                 for zone in dev.zones if zone.location}
 
         # create the device id to device dictionary: key is an id, value is a Device object
-        self._devices = {dev.id: dev for dev in self._system.devices}
+        self._mcdevices = {dev.id: dev for dev in self._system.devices if dev.musiccast}
 
     def loop(self):
         ''' The method called periodically by the main loop.
@@ -71,60 +72,76 @@ class musiccastInterface(object):
         '''
 
         while True: # process the incoming messages list
-            msg = self._msgl_in.pull() # read messages on a FIFO basis
-            if msg is None: break # no more messages
+            self._msg = self._msgl_in.pull() # read messages on a FIFO basis
+            if self._msg is None: break # no more messages
 
-            _logger.debug(''.join(('Processing message: ', msg.str())))
+            _logger.debug(''.join(('Processing message: ', self._msg.str())))
 
-            if not msg.iscmd: continue # ignore status messages
+            if not self._msg.iscmd: continue # ignore status messages
+            if self._msg.sender == 'musiccast': continue # ignore echos
 
-            # determine if the message is 'assertive'
+            # find the zone to operate by resolving the 'address'
             assertive = False
-            if msg.gateway == 'musiccast': # TODO: there are other cases to deal with
+            zone = None
+
+            # The following filters should be dealt by subscriptions
+            if not self._msg.function and not self._msg.gateway: continue
+            if self._msg.gateway and self._msg.gateway != 'musiccast': continue
+            if self._msg.function and self._msg.function != 'audiovideo': continue
+
+            if self._msg.gateway: assertive = True
+            if not self._msg.location and not self._msg.device: 
+                self._msg_error('Missing location or device', assertive)
+                continue
+            if self._msg.location:
+                try: zone = self._locations[self._msg.location]
+                except KeyError:
+                    self._msg_error('Location not found.', assertive)
+                    continue
+            if self._msg.device:
                 assertive = True
-
-            # is there a device in the topic?
-            if msg.device:
-                if msg.device in self._devices:
-                    assertive = True
-                    # TODO: select the 'default' zone for this device
-                pass
-
-            # get the zone for this location
-            try: zone = self._locations[msg.location]
-            except KeyError: # the location is not found
-                errtxt = ''.join(('Location ', msg.location, ' not found.'))
-                _logger.info(errtxt)
-                if assertive: self._msgl_out.push(msg.reply('Error', errtxt))
-                continue # ignore message and go onto next
+                try: device = self._mcdevices[self._msg.device]
+                except KeyError:
+                    self._msg_error('Device not found', assertive)
+                    continue
+                else:
+                    if zone and zone.device != device: # zone already defined by location
+                        self._msg_error('Inconsistent devices', assertive)
+                        continue
+                    try: zone_id = self._msg.arguments['zone']
+                    except KeyError: # if not already defined by location, take the first one
+                        if not zone: zone = device.zones[0] 
+                    else:
+                        zone_bis = device.get_zone(zone_id=zone_id, raises=False)
+                        if zone_bis is None:
+                            self._msg_error('Zone not found', assertive)
+                            continue
+                        elif zone and zone!=zone_bis:
+                            self._msg_error('Inconsistent zones', assertive)
+                            continue
+                        else:
+                            zone = zone_bis
 
             # give access to the message attributes by loading them into the system instance
-            self._system.put_msg(msg)
+            self._system.put_msg(self._msg)
 
             # TODO: implement self._system.execute_action
             # retrieve the function to execute for this action
-            try: func = ACTIONS[msg.action]
-            except KeyError: # the action is not found
-                errtxt = ''.join(('Action ', msg.action, ' not found.'))
-                _logger.info(errtxt)
-                if assertive: self._msgl_out.push(msg.reply('Error', errtxt))
-                continue # ignore message and go onto next
+            try: func = ACTIONS[self._msg.action]
+            except KeyError:
+                self._msg_error('Action not found', assertive)
+                continue
 
             # execute the function in the zone
             try: func(zone)
             except mcx.AnyError as err:
-                _logger.info(''.join(('Can\'t execute command. Error:\n\t', repr(err))))
+                _logger.info(''.join(('Can\'t execute command. Error:\n\t', str(err))))
                 continue
-
-            # stack reply on outgoing message list
-            #self._msgl_out.push(self.reply())
-
-            #_logger.debug(zone.dump_zone())
 
         # check if there are any events to process
         try: self._system.listen_musiccast()
         except mcx.AnyError as err:
-            _logger.info(''.join(('Can\'t parse event. Error:\n\t', repr(err))))
+            _logger.info(''.join(('Can\'t parse event. Error:\n\t', str(err))))
 
         # refresh the system
         self._system.refresh()
@@ -140,7 +157,10 @@ class musiccastInterface(object):
         # _logger.debug(''.join(('Message <', msg.str(), '> queued to send.')))
         #=======================================================================
 
-# if device['protocol'] == 'YNCA': conn.request('GET','@SYS:PWR=?\r\n')
+    def _msg_error(self, error_text='Addressing error', mqtt_reply=False):
+        ''' docstring '''
+        _logger.info(''.join((error_text, ' in message ', self._msg.str())))
+        if mqtt_reply: self._msgl_out.push(self._msg.reply('Error', error_text))
 
 if __name__ == '__main__':
     pass
