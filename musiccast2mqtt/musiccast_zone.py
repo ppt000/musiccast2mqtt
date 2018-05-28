@@ -380,11 +380,13 @@ class Zone(object):
         Finally, dealing with the source is complicated by the fact that the
         command should not grab the source requested without checking first if
         it is already used by another zone.
-        
+
         15May2018: Priorities in finding source:
+
         1) Prefer same device (even if not MusicCast)
         2) Prefer MusicCast devices as remote sources
           a) Prefer source being already played and join it
+
         3) Take a non MusicCast device if found
           a) Prefer source being already played and join it
 
