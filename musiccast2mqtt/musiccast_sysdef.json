@@ -1,60 +1,119 @@
-{ "devices":
- [
-     {
-      "id": "NetworkPlayer",
-      "model": "CD-NT670D",
-      "protocol": "YEC",
-      "host": "192.168.1.10",
-      "zones": [
-                {"id": "MAIN",
-                 "location": "",
-                 "mcid": "main"}],
-      "sources": [
-                  {"id": "SPOTIFY",
-                   "mcid": "spotify"},
-                  {"id": "SERVER", "mcid": "server"},
-                  {"id": "NETRADIO", "mcid": "net_radio"},
-                  {"id": "TUNER", "mcid": "tuner"},
-                  {"id": "CD", "mcid": "cd"}],
-      "feeds": []
-     },
-     {
-      "id": "AVLivingRoom", "model": "RX-A550", "protocol": "YEC", "host": "192.168.1.11",
-      "zones": [
-                {"id": "Room",
-                 "location": "livingroom",
-                 "mcid": "main"}],
-      "sources": [
-                  {"id": "SPOTIFY", "mcid": "spotify"},
-                  {"id": "SERVER", "mcid": "server"},
-                  {"id": "NETRADIO", "mcid": "net_radio"},
-                  {"id": "TUNER", "mcid": "tuner"}],
-      "feeds": [
-                {"id": "av4",
-                 "device_id": "NetworkPlayer",
-                 "zone_id": "MAIN",
-                 "mcid": "av4"},
-                {"id": "hdmi1",
-                 "device_id": "BluRayPlayer",
-                 "mcid": "hdmi1"},
-                {"id": "hdmi2",
-                 "device_id": "Satellite",
-                 "mcid": "hdmi2"}
-               ]
-     },
-     {
-      "id": "AudioMatrix",
-      "zones": [
-                {"id": "channel1", "location": "kitchen"},
-                {"id": "channel2", "location": "office"},
-                {"id": "channel3", "location": "diningroom"}],
-      "sources": [],
-      "feeds": [
-                {"id": "input1",
-                 "device_id": "AVLivingRoom",
-                 "zone_id": "Room"},
-                {"id": "input2",
-                 "device_id": "NetworkPlayer",
-                 "zone_id": "MAIN"}]
-     }
- ]}
+{
+    "devices": [
+        {
+            "id": "NetworkPlayer",
+            "model": "CD-NT670D",
+            "protocol": "YEC",
+            "host": "192.168.1.10",
+            "zones": [
+                {
+                    "id": "MAIN",
+                    "location": "",
+                    "mcid": "main"
+                }
+            ],
+            "sources": [
+                {
+                    "id": "SPOTIFY",
+                    "mcid": "spotify"
+                },
+                {
+                    "id": "SERVER",
+                    "mcid": "server"
+                },
+                {
+                    "id": "NETRADIO",
+                    "mcid": "net_radio"
+                },
+                {
+                    "id": "TUNER",
+                    "mcid": "tuner"
+                },
+                {
+                    "id": "CD",
+                    "mcid": "cd"
+                }
+            ],
+            "feeds": []
+        },
+        {
+            "id": "AVLivingRoom",
+            "model": "RX-A550",
+            "protocol": "YEC",
+            "host": "192.168.1.11",
+            "zones": [
+                {
+                    "id": "Room",
+                    "location": "livingroom",
+                    "mcid": "main"
+                }
+            ],
+            "sources": [
+                {
+                    "id": "SPOTIFY",
+                    "mcid": "spotify"
+                },
+                {
+                    "id": "SERVER",
+                    "mcid": "server"
+                },
+                {
+                    "id": "NETRADIO",
+                    "mcid": "net_radio"
+                },
+                {
+                    "id": "TUNER",
+                    "mcid": "tuner"
+                }
+            ],
+            "feeds": [
+                {
+                    "id": "av4",
+                    "device_id": "NetworkPlayer",
+                    "zone_id": "MAIN",
+                    "mcid": "av4"
+                },
+                {
+                    "id": "hdmi1",
+                    "device_id": "BluRayPlayer",
+                    "mcid": "hdmi1"
+                },
+                {
+                    "id": "hdmi2",
+                    "device_id": "Satellite",
+                    "mcid": "hdmi2"
+                }
+            ]
+        },
+        {
+            "id": "AudioMatrix",
+            "zones": [
+                {
+                    "id": "channel1",
+                    "location": "kitchen"
+                },
+                {
+                    "id": "channel2",
+                    "location": "office"
+                },
+                {
+                    "id": "channel3",
+                    "location": "diningroom"
+                }
+            ],
+            "sources": [],
+            "feeds": [
+                {
+                    "id": "input1",
+                    "device_id": "AVLivingRoom",
+                    "zone_id": "Room"
+                },
+                {
+                    "id": "input2",
+                    "device_id": "NetworkPlayer",
+                    "zone_id": "MAIN"
+                }
+            ]
+        }
+    ]
+}
