@@ -1,27 +1,41 @@
-'''
-Representation of the Audio-Video system, including non-MusicCast devices.
+''' Representation of the Audio-Video system, including non-MusicCast devices.
 
-The initialisation process is separated in 2 steps:
+.. reviewed 31 May 2018
 
-#. Load the static data from a JSON file into a local hierarchy made of
-   a single system with devices that each have zones, sources and feeds.
+The Audio-Video system is represented by a tree structure made of the
+:class:`System` as root, having a list of :class:`Device` objects as branches.
+Devices have then lists of :class:`Input` objects and lists of :class:`Zone` objects.
 
-#. Attempt to retrieve *live* data from all the MusicCast devices
+The initialisation process is separated in 3 steps:
+
+1. Instantiate objects, load the static data from a JSON file into local attributes
+   and propagate this initialisation steps to the next level, i.e. devices and then
+   inputs and zones.
+
+2. Post initialisation step, where some attributes are created based on the whole
+   tree structure being already initialised in step 1.  For example, finding and
+   assigning the actual object represented by a string *id* in the JSON file, is done
+   here.
+
+3. Attempt to retrieve *live* data from all the MusicCast devices
    and initialise various parameters based on this data.  In case of failure,
    the retrieval of the information is delayed and the functionality of the
-   device is not available until it goes back *online*.
+   device is not available until it goes back *online*.  Beware that in this
+   case some *helper* dictionaries might still point to objects that are not valid,
+   so always test if a device is *ready* before proceeding using MusicCast related
+   attributes.
 
 The execution of a command is triggered by a lambda function retrieved from the
-ACTIONS dictionary (done within the loop in the `musiccast_interface` module).
+ACTIONS dictionary.
 These lambda functions are methods called from a :class:`Zone` objects that
 perform all the steps to execute these actions, including sending the actual
 requests to the devices over HTTP (through the `musiccast_comm` module).
-
 '''
 
 import musiccast2mqtt.musiccast_exceptions as mcx
-import musiccast2mqtt.musiccast_comm as mcc
-from musiccast2mqtt.musiccast_data import ACTIONS, EVENTS
+#import musiccast2mqtt.musiccast_comm as mcc
+from musiccast2mqtt.musiccast_comm import musiccastListener
+from musiccast2mqtt.musiccast_data import EVENTS
 from musiccast2mqtt.musiccast_device import Device
 
 import mqttgateway.utils.app_properties as app
@@ -30,13 +44,14 @@ _logger = app.Properties.get_logger(__name__)
 class System(object):
     '''Root of the audio-video system.
 
-    This class loads the *static* data into local attributes from the JSON file.  Some checks are
-    performed. Configuration errors coming from a bad description of the system in the file are
+    This class loads the *static* data into local attributes from the JSON file.
+    Some checks are performed.
+    Configuration errors coming from a bad description of the system in the file are
     fatal.
 
-    Then it retrieves MusicCast parameters from the MusicCast devices through HTTP requests.  In
-    case of connection errors, the device concerned is put in a *not ready* state, and its update
-    delayed.
+    It then retrieves MusicCast parameters from the MusicCast devices through HTTP requests.
+    In case of connection errors, the device concerned is put in a *not ready* state,
+    and its update delayed.
 
     The initialisation process also starts the events listener, which is unique
     across all MusicCast devices.
@@ -44,7 +59,7 @@ class System(object):
     Args:
         json_data (string): JSON valid code describing the system.
             Check it against the available schema.
-        msgl (MsgList object): the outgoing message list #TODO:move it to upload method
+        msgl (MsgList object): the outgoing message list
 
     Raises:
         Any of AttributeError, IndexError, KeyError, TypeError, ValueError:
@@ -52,66 +67,140 @@ class System(object):
     '''
 
     def __init__(self, json_data, msgl):
-
         # Initialise the events listener.
-        listen_port = 41100 # TODO: check what port to use
-        mcc.set_socket(listen_port)
-
+        self.listen_port = 41100 # TODO: check what port to use and makeit an option in the configuration
+        #mcc.set_socket(listen_port)
+        self._listener = musiccastListener(self.listen_port)
         # Assign locally the message attributes
         self._msgl = msgl
         self._msgin = None
-        self._msgout = None
+        #self._msgout = None
         self._arguments = {}
-
+        self._explicit = False # indicates if the addressing is explicit or not
         # Create the list of devices; this unwraps the whole JSON structure
         devices = []
         for device_data in json_data['devices']:
-            try: devices.append(Device(device_data, self))
+            try: device = Device(device_data, self)
             except mcx.AnyError as err:
-                _logger.info(''.join(('Problem loading device. Error:\n\t', repr(err))))
+                _logger.info(''.join(('Problem loading device. Error:\n\t', str(err))))
                 continue
+            devices.append(device)
         self.devices = tuple(devices)
         # some helpers
         self.mcdevices = tuple([dev for dev in self.devices if dev.musiccast])
         self._devices_by_id = {dev.id: dev for dev in self.devices}
-
+        #self._devices_by_yxcid = {} # updated in load_musiccast
         # Assign the device and zone connected to each feed.
         for dev in self.devices:
-            dev.post_init()
-
+            try: dev.post_init()
+            except mcx.AnyError as err:
+                _logger.info(''.join(('Problem in post initialisation. Error:\n\t', str(err))))
+                continue
         # Now we can initialise MusicCast related fields
         for dev in self.mcdevices:
-            dev.load_musiccast()
-
+            try: dev.load_musiccast()
+            except mcx.CommsError as err:
+                _logger.info(''.join(('Cannot initialise MusicCast device <', dev.id,
+                                      '>. Error:\n\t', str(err))))
+                continue
+            except mcx.ConfigError as err:
+                # These should be only related to a bad system definition? unrecoverable?
+                _logger.info(''.join(('MusicCast device ', self.id,
+                                      ' seems badly configured. Error:\n\t', str(err))))
+                continue
+            except mcx.AnyError as err:
+                _logger.info(''.join(('Problem in loading MusicCast information. Error:\n\t',
+                                      str(err))))
+                continue
+            # create the {location: zone} dictionary
+            self._locations = {zone.location: zone
+                               for dev in self.devices
+                               for zone in dev.zones
+                               if zone.location}
         return
 
-    def put_msg(self, msg):
-        '''
-        Load locally internal message coming from the mapping engine.
+    def _filter_topics(self):
+        ''' docstring '''
+        _logger.debug('Filtering topics')
+        if not self._msgin.iscmd: # ignore status messages (for now?)
+            return False
+        if self._msgin.sender == 'musiccast': # ignore echoes
+            return False
+        # the following filters could be dealt by subscriptions
+        if not self._msgin.function and not self._msgin.gateway:
+            raise mcx.LogicError('No function or gateway in message.')
+        if self._msgin.gateway and self._msgin.gateway != 'musiccast':
+            return False
+        if self._msgin.function and self._msgin.function != 'AudioVideo':
+            return False
+        if not self._msgin.location and not self._msgin.device:
+            raise mcx.LogicError('No location or device in message.')
+        return True
 
-        Load message, unpack arguments and transform them to the MusicCast
-        protocol for easy access later by the lambda functions. The arguments in
-        `msg.arguments` are strings of *internal* keywords. They need to be
-        transformed into a MusicCast format (even it is only really needed for
-        values like volume or booleans). The *local* dictionary `self._arguments`
-        contains the same keys as `msg.arguments`.
-        '''
-        # TODO: can't we just leave the arguments where they are?
+    def _resolve_zone(self):
+        ''' docstring'''
+        _logger.debug('Resolve zone')
+        # find the zone to operate by resolving the 'address'
+        self._explicit = False
+        zone_from_location = None
+        zone_from_device = None
+        #
+        if self._msgin.gateway: self._explicit = True
+        if self._msgin.location:
+            try: zone_from_location = self._locations[self._msgin.location]
+            except KeyError:
+                raise mcx.LogicError(''.join(('Location <', self._msgin.location, '>not found.')))
+        if self._msgin.device:
+            self._explicit = True
+            try: device = self._devices_by_id[self._msgin.device]
+            except KeyError:
+                raise mcx.LogicError(''.join(('Device <', self._msgin.device, '> not found')))
+            # check if the zone in the device is provided in the arguments
+            zone_id = self._msgin.arguments.get('zone', None)
+            if zone_id:
+                zone_from_device = device.get_zone(zone_id=zone_id, raises=True)
+            # if there was no zone specified in the arguments, zone_from_device is still None here
+            # check consistency between device and location, if location was resolved
+            if zone_from_location:
+                if zone_from_location.device != device:
+                    raise mcx.LogicError('Location and device point to different devices.')
+                if zone_from_device and zone_from_location != zone_from_device:
+                        raise mcx.LogicError('Location and device point to different zones.')
+                return zone_from_location # all other cases lead to this
+            else:
+                if not zone_from_device:
+                    zone_from_device = device.zones[0] # take the first one by default
+                return zone_from_device
+        return zone_from_location
+
+    def process_msg(self, msg):
+        ''' docstring '''
+        # keep message locally
         self._msgin = msg
+        # TODO: can't we just leave the arguments where they are?
         self._arguments.clear()
-        if not msg.arguments: return
-        for arg in msg.arguments: self._arguments[arg] = msg.arguments[arg] # copy arguments
+        if msg.arguments:
+            for arg in msg.arguments: self._arguments[arg] = msg.arguments[arg] # copy arguments
+        # process the message
+        if not self._filter_topics(): return
+        zone = self._resolve_zone()
+        response, reason = zone.execute_action(self._msgin.action)
+        if response:
+            self._msgl.push(self._msgin.reply(response, reason))
         return
-
-    def get_msg(self):
-        ''' Docstring '''
-        return self._msgout
 
     def get_device(self, device_id=None, yxc_id=None, raises=False):
-        ''' Returns the Device object from its id.'''
+        ''' Returns the :class:`Device` object from its id or Yamaha id.
+
+        Args:
+            device_id (string): the id of the device sought
+            yxc_id (string): the Yamaha hardware id of the device sought
+            raises (boolean): if True, raises an exception instead of returning ``False``
+        '''
         if device_id:
             try: return self._devices_by_id[device_id]
-            except KeyError: err = ''.join(('Device id <', str(device_id), '> not found.'))
+            except KeyError:
+                err = ''.join(('Device id <', str(device_id), '> not found.'))
         elif yxc_id:
             for dev in self.devices:
                 if yxc_id == dev.get_yxcid(raises=False): return dev
@@ -127,28 +216,11 @@ class System(object):
     def get_argument(self, arg):
         ''' Retrieves argument from arguments dictionary.
 
-        FEATURE?: this method could take the value of the argument sought. If None, look for it in
-        the dictionary, if not None then check for its validity against the features.
+        Args:
+            arg (string): the name of the argument sought
         '''
         try: return self._arguments[arg]
         except KeyError: raise mcx.LogicError(''.join(('No argument <', arg, '> found.')))
-
-    def execute_action(self, zone, action):
-        ''' docstring'''
-        # TODO: implement
-        # retrieve the function to execute for this action
-        try: func = ACTIONS[action]
-        except KeyError: # the action is not found
-            errtxt = ''.join(('Action ', action, ' not found.'))
-            _logger.info(errtxt)
-            return
-
-        # execute the function in the zone
-        try: func(zone)
-        except mcx.AnyError as err:
-            _logger.info(''.join(('Can\'t execute command. Error:\n\t', repr(err))))
-
-        return
 
     def listen_musiccast(self):
         ''' Checks if a MusicCast event has arrived and parses it.
@@ -166,15 +238,13 @@ class System(object):
 
         TODO: check if more than one event could be received in a single call.
         '''
-
-        event = mcc.get_event()
+        #event = mcc.get_event()
+        event = self._listener.get_event()
         if event is None: return
-
         # Find device within the event dictionary
         device_id = event.pop('device_id', None) # read and remove key
         if device_id is None: raise mcx.CommsError('Event has no device_id. Ignore.')
         device = self.get_device(yxc_id=device_id, raises=True)
-
         # Read event dictionary and call lambda for each key match found
         flist = [] # list of all lambdas to call; the elements are pairs (func, arg)
         for key1 in event:
@@ -202,7 +272,12 @@ class System(object):
             except mcx.AnyError as err:
                 _logger.info(''.join(('Problem processing event item. Ignore. Error:\n\t',
                                       repr(err))))
+        return
 
     def refresh(self):
         ''' Performs various periodic checks and refreshers on all devices.'''
-        for dev in self.mcdevices: dev.refresh()
+        for dev in self.mcdevices:
+            try: dev.refresh()
+            except mcx.AnyError as err:
+                _logger.info(''.join(('Problem refreshing device. Error:\n\t', str(err))))
+                continue
