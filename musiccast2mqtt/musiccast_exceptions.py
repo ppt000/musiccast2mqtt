@@ -1,30 +1,23 @@
-'''
-Exceptions definitions for the MusicCast package.
+''' Exceptions definitions for the MusicCast package.
+
+.. reviewed 31 May 2018
 
 All are inherited from the Exception class, with the member
 'message' available.
-
-Types of Errors:
-
-* CommsError: any type of communication error which should not be due
-    to a bad command or a command issued at the wrong time.
-*
-
 '''
 
 class AnyError(Exception):
-    ''' Docstring'''
+    ''' All the errors from this package'''
     pass
 
 class CommsError(AnyError):
-    ''' Docstring'''
+    ''' Communication errors'''
     pass
 
 class LogicError(AnyError):
-    ''' Docstring'''
+    ''' Logic errors'''
     pass
 
 class ConfigError(AnyError):
-    ''' Docstring'''
+    ''' Configuration errors'''
     pass
-
