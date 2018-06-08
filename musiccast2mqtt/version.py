@@ -4,4 +4,4 @@
 #version = '0.106'
 
 # pypi.org
-version = '0.1'
+version = '0.112'
