@@ -1,4 +1,7 @@
-'''
+''' Representation of a zone.
+
+.. reviewed 31 May 2018
+
 Assumptions on Zones:
 
 - all MusicCast zones have always a valid input assigned (even when off).
@@ -8,11 +11,10 @@ Assumptions on Zones:
 import time
 
 import musiccast2mqtt.musiccast_exceptions as mcx
-from musiccast2mqtt.musiccast_data import TRANSFORM_ARG
+from musiccast2mqtt.musiccast_data import TRANSFORM_ARG, ACTIONS
 
 import mqttgateway.utils.app_properties as app
 _logger = app.Properties.get_logger(__name__)
-
 
 class Zone(object):
     ''' Represents a zone on the device.
@@ -29,8 +31,11 @@ class Zone(object):
         self._power = False
         self._volume = 0
         self._mute = False
-        self._input = self.device.inputs[0] # any input will do for now
+        self._input = None #self.device.inputs[0] # any input will do for now
+        self._input_id = '' # self._input.id
         self._amplified = (self.location != '')
+        self._response = ''
+        self._reason = ''
         if self.device.musiccast:
             self.mcid = zone_data['mcid']
             self._status = {}
@@ -45,14 +50,14 @@ class Zone(object):
         '''Initialisation of MusicCast related characteristics.
 
         This method uses the objects retrieved from previous HTTP requests.
-        It can be called again at any time to try again this initialisation.
+        It can be called at any time to try again this initialisation.
         '''
         range_min = self.device.get_feature(('zone', ('id', self.mcid),
                                              'range_step', ('id', 'volume'), 'min'))
         range_max = self.device.get_feature(('zone', ('id', self.mcid),
                                              'range_step', ('id', 'volume'), 'max'))
         range_step = self.device.get_feature(('zone', ('id', self.mcid),
-                                             'range_step', ('id', 'volume'), 'step'))
+                                              'range_step', ('id', 'volume'), 'step'))
         self._volume_range = range_max - range_min
         self._volume_min = range_min
         self._volume_step = range_step
@@ -61,7 +66,13 @@ class Zone(object):
         return
 
     def is_zone_id(self, zone_id=None, zone_mcid=None, raises=False):
-        ''' Returns True if the id corresponds to the current zone.'''
+        ''' Returns True if the id corresponds to the current zone.
+
+        Args:
+            zone_id (string): zone id
+            zone_mcid (string): zone MusicCast id
+            raises (boolean): if True, an exception is raised if result is False
+        '''
         if zone_id is not None:
             if self.id == zone_id: return True
             msg_id = zone_id
@@ -82,35 +93,50 @@ class Zone(object):
         else:
             return False
 
-    def get_mcitem(self, dico, item):
-        ''' Retrieves the item in the MusicCast status dictionary.
+    def _get_dict_item(self, dico, item):
+        ''' Retrieves the item in the dictionary.
 
-        This is a safety method in case the status structure sent back by MusicCast does not have
-        the item expected.
+        This is a safety method in case a structure sent back by MusicCast
+        does not have the item expected.  It catches the KeyError exception
+        and changes it into a CommsError one.
+
+        Args:
+            dico (dict): the dictionary to look into
+            item (string): the key to look for
         '''
         try: return dico[item]
         except KeyError:
             raise mcx.CommsError(''.join(('The dictionary provided by device <', self.device.id,
                                           '> does not contain the item <', item, '>')))
 
-    def get_current_input(self, raises=False):
-        ''' Docstring'''
-        if self._input is None and raises: raise mcx.ConfigError('Current [input] inassigned.')
+    def _get_current_input(self, raises=False):
+        ''' Returns the current input in this zone or None
+
+        Args:
+            raises (boolean): if True, raises an exception if not found
+        '''
+        if self._input is None and raises: raise mcx.ConfigError('Input unassigned.')
         return self._input
 
-    def transform_arg(self, key, invalue=None, mcvalue=None):
+    def _transform_arg(self, key, invalue=None, mcvalue=None):
         '''Transforms a message argument from/to internal to/from MusicCast.
 
-        # TODO: do we need to transform the keys as well?
         Args:
+
             key (string): internal name of argument.
-            value: the value to be transformed.
-            int2mc (boolean): if True then transformation is from internal to MusicCast.
+
+            invalue: the internal value to be transformed; if provided the transformation
+              is done from this value to the MusicCast value, which is returned.
+
+            mcvalue: the MusicCast value to be transformed; relevant only if ``invalue`` is
+              None, in which case the transformation is done from this value to the
+              internal value, which is returned.
 
         Returns:
             string: the transformed representation of the value.
         '''
-        try: func = TRANSFORM_ARG[key]# Retrieve the transformation lambdas
+        # TODO: do we need to transform the keys as well?
+        try: func = TRANSFORM_ARG[key] # Retrieve the transformation lambdas
         except KeyError:
             raise mcx.LogicError(''.join(('Argument ', str(key), ' has no transformation.')))
         if invalue is not None: # transform from internal to MusicCast
@@ -126,44 +152,55 @@ class Zone(object):
         try: trsfrm_value = func[trsfrm](self, value)
         except (TypeError, ValueError) as err: # errors to catch in case of bad format
             raise mcx.LogicError(''.join(('Value ', str(value), ' of argument ', str(key),
-                                          ' seems of the wrong type. Error:\n\t', repr(err))))
+                                          ' seems of the wrong type. Error:\n\t', str(err))))
         return trsfrm_value
+
+    def execute_action(self, action):
+        ''' Executes the action in the zone provided
+
+        Args:
+            action (string): action name in internal vocabulary
+        '''
+        _logger.debug(''.join(('Execute action <', action, '> on zone <', self.id,
+                               '> of device <', self.device.id, '>.')))
+        self._response = ''
+        self._reason = ''
+        # retrieve the function to execute for this action
+        try: func = ACTIONS[action]
+        except KeyError: # the action is not found
+            raise mcx.LogicError(''.join(('Action ', action, ' not found.')))
+        # execute the function in the zone
+        func(self)
+        # Return reply
+        return self._response, self._reason
 
     def refresh_status(self):
         ''' Retrieve the state of the zone and store it locally.'''
         self.device.is_musiccast(raises=True)
         self._status = self.device.conn.mcrequest(self.mcid, 'getStatus')
         self._status_time = time.time() # record time of refresh
-        self.update_status()
+        self.update_power(mcvalue=self._get_dict_item(self._status, 'power'))
+        self.update_volume(mcvalue=self._get_dict_item(self._status, 'volume'))
+        self.update_mute(mcvalue=self._get_dict_item(self._status, 'mute'))
+        self.update_input(mcvalue=self._get_dict_item(self._status, 'input'))
         self.status_requested = False
 
-    def update_status(self):
-        ''' Load MusicCast status values into local attributes.
-
-        TODO: Log in case of change in the 4 attributes?
-        '''
-        #if not self.device.is_mcready(): return
-        self.update_power(self.get_mcitem(self._status, 'power'))
-        self.update_volume(self.get_mcitem(self._status, 'volume'))
-        self.update_mute(self.get_mcitem(self._status, 'mute'))
-        self.update_input(self.get_mcitem(self._status, 'input'))
-
-    def update_power(self, mc_power):
+    def update_power(self, invalue=None, mcvalue=None):
         ''' Updates internal state of zone after change in power state.
 
         Args:
-            power (bool): the new value of the power state
+            invalue (boolean): the new value of the power state
+            mcvalue (string): "on" or "standby"
 
         Returns:
             Boolean: True if there is a change.
         '''
-        power = self.transform_arg('power', mcvalue=mc_power)
+        if invalue is None: power = self._transform_arg('power', mcvalue=mcvalue)
+        else: power = invalue
         if self._power == power: return False# do nothing if no change
         # do something here if needed
-        _logger.info(''.join(('Change on power:'\
-                              ' \n\tOld Value: <', str(self._power),
-                              '>\n\tNew Value: <', str(power), '>.')))
-        self._power = power # assign new value to internal attribute
+        _logger.info(''.join(('Power from <', str(self._power), '> to <', str(power), '>.')))
+        self._power = power
         return True
 
     def set_power(self, power):
@@ -173,15 +210,16 @@ class Zone(object):
             power (boolean): converted into 'on' or 'standby'.
         '''
         self.device.is_mcready(raises=True)
-        mc_power = self.transform_arg('power', invalue=power)
+        mc_power = self._transform_arg('power', invalue=power)
         cmdtxt = 'setPower?power={}'.format(mc_power)
         self.device.conn.mcrequest(self.mcid, cmdtxt)
-        self.update_power(mc_power)
+        self.update_power(invalue=power)
         self.status_requested = True
-        self.send_reply('OK', ''.join(('power is ', self._status['power'])))
+        self._response = 'OK'
+        self._reason = ''.join(('power is ', mc_power))
         return
 
-    def power_on(self, raises=False):
+    def is_power_on(self, raises=False):
         ''' Helper function to test if power of zone is ON.
 
         Always returns True if the zone is ON.
@@ -203,22 +241,22 @@ class Zone(object):
                                           ' of device ', self.device.id, ' is not turned on.')))
         else: return False
 
-    def update_volume(self, mc_volume):
+    def update_volume(self, invalue=None, mcvalue=None):
         ''' Updates internal state of zone after change in volume.
 
         Args:
-            value (int): the new value of the volume
+            invalue (int): the new value of the volume in internal metric
+            mcvalue (int): the new value of the volume in MusicCast metric
 
         Returns:
             Boolean: True if there is a change.
         '''
-        volume = self.transform_arg('volume', mcvalue=mc_volume)
+        if invalue is None: volume = self._transform_arg('volume', mcvalue=mcvalue)
+        else: volume = invalue
         if self._volume == volume: return False # do nothing if no change
         # do something here if needed
-        _logger.info(''.join(('Change on volume:'\
-                              ' \n\tOld Value: <', str(self._volume),
-                              '>\n\tNew Value: <', str(volume), '>.')))
-        self._volume = volume # assign new value to internal attribute
+        _logger.info(''.join(('Volume from <', str(self._volume), '> to <', str(volume), '>.')))
+        self._volume = volume
         return True
 
     def set_volume(self, up=None):
@@ -229,10 +267,12 @@ class Zone(object):
               not then the volume to set has to be in the arguments.
         '''
         self.device.is_mcready(raises=True)
-        self.power_on(raises=True)
+        self.is_power_on(raises=True)
         if up is None:
-            volume = self.device.system.get_argument('volume') # volume is a string
-            mc_volume = self.transform_arg('volume', invalue=volume) # mc_volume should be an int
+            # retrieve the volume in the arguments; cast it to int just in case it's a string
+            try: volume = int(self.device.system.get_argument('volume'))
+            except (TypeError, ValueError): raise mcx.LogicError('Invalid volume argument')
+            mc_volume = self._transform_arg('volume', invalue=volume)
             mc_volume = min(max(mc_volume, self._volume_min),
                             (self._volume_min + self._volume_range))
             self.device.conn.mcrequest(self.mcid, ''.join(('setVolume?volume=', str(mc_volume))))
@@ -240,32 +280,34 @@ class Zone(object):
             self.device.conn.mcrequest(self.mcid, ''.join(('setVolume?volume=',
                                                            'up' if up else 'down')))
             # calculate volume level to update locally
-            mc_volume = self._volume
+            mc_volume = self._transform_arg('volume', invalue=self._volume)
+            # mc_volume is an int
             mc_volume += (1 if up else -1) * self._volume_step
             mc_volume = min(max(mc_volume, self._volume_min),
                             (self._volume_min + self._volume_range))
-        self.update_volume(mc_volume)
+            volume = self._transform_arg('volume', mcvalue=mc_volume)
+        self.update_volume(volume)
         self.status_requested = True
-        self.send_reply('OK', ''.join(('volume is ', str(self.transform_arg('volume',
-                                                                         mcvalue=mc_volume)))))
+        self._response = 'OK'
+        self._reason = ''.join(('volume is ', str(volume)))
         return
 
-    def update_mute(self, mc_mute):
+    def update_mute(self, invalue=None, mcvalue=None):
         ''' Updates internal state of zone after change in mute state.
 
         Args:
-            mute (bool): the new value of the mute state
+            invalue (boolean): the new value of the mute state
+            mcvalue (string): "true" or "false"
 
         Returns:
             Boolean: True if there is a change.
         '''
-        mute = self.transform_arg('mute', mcvalue=mc_mute)
+        if invalue is None: mute = self._transform_arg('mute', mcvalue=mcvalue)
+        else: mute = invalue
         if self._mute == mute: return False # do nothing if no change
         # do something here if needed
-        _logger.info(''.join(('Change on mute:'\
-                              ' \n\tOld Value: <', str(self._mute),
-                              '>\n\tNew Value: <', str(mute), '>.')))
-        self._mute = mute # assign new value to internal attribute
+        self._mute = mute
+        _logger.info(''.join(('Mute from <', str(self._mute), '> to <', str(mute), '>.')))
         return True
 
     def set_mute(self, mute):
@@ -275,46 +317,57 @@ class Zone(object):
             mute (boolean): converted into 'true' or 'false'
         '''
         self.device.is_mcready(raises=True)
-        self.power_on(raises=True)
-        mc_mute = self.transform_arg('mute', invalue=mute)
+        self.is_power_on(raises=True)
+        mc_mute = self._transform_arg('mute', invalue=mute)
         self.device.conn.mcrequest(self.mcid, ''.join(('setMute?enable=', mc_mute)))
-        self.update_mute(mc_mute)
+        self.update_mute(mute)
         self.status_requested = True
-        self.send_reply('OK', ''.join(('mute is ', mc_mute)))
+        self._response = 'OK'
+        self._reason = ''.join(('mute is ', mc_mute))
         return
 
-    def update_input(self, input_mcid):
+    def update_input(self, invalue=None, mcvalue=None):
         ''' Updates internal value of input object after change in input.
 
+        Managing the <input> inside the application is complicated by the fact that the device
+        might have a lot of valid inputs that are not documented in the system definition if they
+        are unused.  For example an HDMI input (say "hdmi5") might not be physically connected and
+        therefore does not need to appear in the system defintion, but it still exists.
+        Then if another interface or a physical user switches to that input, probably by mistake,
+        this interface should handle it and not generate errors.
+
         Args:
-            input (:class:`Input`): a valid Input object
+            invalue (string): a valid internal input id
+            mcvalue(string): a valid Input MusicCast id
 
         Returns:
             Boolean: True if there is a change.
         '''
-        inp = self.device.get_input(input_mcid=input_mcid)
-        if self._input.id == inp.id: return False # do nothing if no change
+        if invalue is None: input_id_new = self._transform_arg('input', mcvalue=mcvalue)
+        else: input_id_new = invalue
+        if self._input and self._input.id == input_id_new: return False # do nothing if no change
         # do something here if needed
-        _logger.info(''.join(('Change on input:'\
-                              ' \n\tOld Value: <', str(self._input.id),
-                              '>\n\tNew Value: <', str(inp.id), '>.')))
-        self._input = inp # assign new value to internal attribute
+        if self._input is None: input_id_old = 'None'
+        else: input_id_old = self._input.id
+        _logger.info(''.join(('Input from <', str(input_id_old), '> to <', str(input_id_new), '>.')))
+        self._input_id = input_id_new # assign new value to internal attribute
+        # update object reference, if it exists, otherwise it is None
+        self._input = self.device.get_input(input_id=input_id_new, raises=False)
         return True
 
     def set_input(self, input_id=None):
         ''' Sets the input of the zone.
 
-        This methods simply switches the input of the current zone.  It does not matter if the input
+        This method simply switches the input of the current zone.  It does not matter if the input
         is a source or not.  No other action is performed, so if for example the input is a source
         on the same device and it needs to be started or tuned, this is not done here.
 
         Args:
-            input_id (string):
+            input_id (string): input internal identifier
         '''
         # Find the actual Input object in the device from its input_id
         if input_id is None: input_id = self.device.system.get_argument('input')
-        inp = self.device.get_input(input_id=input_id)
-
+        inp = self.device.get_input(input_id=input_id, raises=True)
         # Deal first with the non-MusicCast devices
         if not self.device.musiccast:
             # "Release" any connected source here, if necessary
@@ -322,33 +375,22 @@ class Zone(object):
             return
         # Now it is a MusicCast Ready device
         self.device.is_mcready(raises=True) # if it is MusicCast but not online, exception raised
-        self.power_on(raises=True)
+        self.is_power_on(raises=True)
         self.device.conn.mcrequest(self.mcid, ''.join(('setInput?input=', inp.mcid)))
-        self.update_input(inp.mcid)
+        self.update_input(input_id)
         self.status_requested = True
-        self.send_reply('OK', ''.join(('input is ', inp.mcid)))
+        self._response = 'OK'
+        self._reason = ''.join(('input is ', inp.id))
         return
 
-#===================================================================================================
-#     def _update_usedby_lists(self, source=None):
-#         ''' Updates the new source selection for all available sources.
-#
-#         Args:
-#             source (Source object): the new source used by this zone; if None,
-#                 this method only removes all existing links to it (even if
-#                 there should be only one existing link at maximum).
-#         '''
-#         # Remove the zone from any possible source usedby list
-#         anysrc = []
-#         anysrc.extend(self.device.sources)
-#         anysrc.extend([src for feed in self.device.feeds\
-#                        for src in feed.device.sources])
-#         _logger.debug(''.join(('usedby_lists - anysrc= ', str(anysrc))))
-#         for src in anysrc:
-#             if self in src.usedby: src.usedby.remove(self)
-#         # now add the zone to the new source
-#         if source is not None: source.usedby.append(self)
-#===================================================================================================
+    def get_inputs(self):
+        ''' docstring
+
+        '''
+        # TODO: implement
+        self._response = 'this,should,be,a,list,of,valid,inputs'
+        self._reason = 'for now it does not work'
+        return
 
     def set_source(self, src_id=None):
         ''' Sets the source for the current zone, if available.
@@ -385,10 +427,9 @@ class Zone(object):
 
         1) Prefer same device (even if not MusicCast)
         2) Prefer MusicCast devices as remote sources
-          a) Prefer source being already played and join it
-
-        3) Take a non MusicCast device if found
-          a) Prefer source being already played and join it
+        3) Prefer source being already played and join it
+        4) Take a non MusicCast device if found
+        5) Prefer source being already played and join it
 
         '''
 
@@ -419,10 +460,10 @@ class Zone(object):
             remote_dev = feed.get_remote_dev(raises=True)
             if not remote_dev.is_mcready(): continue # check in MusicCast Ready devices only
             if src_id not in remote_dev.sources_by_id(): continue # no source here
-            remote_zone = feed.get_source_zone()
-            if remote_zone.power_on(): # remote zone is already on
-                current_mcid = remote_zone.get_current_input(raises=True).mcid
-                target_mcid = remote_dev.get_input(input_mcid=src_id).mcid
+            remote_zone = feed.get_control_zone()
+            if remote_zone.is_power_on(): # remote zone is already on
+                current_mcid = remote_zone._get_current_input(raises=True).mcid
+                target_mcid = remote_dev.get_input(input_mcid=src_id, raises=True).mcid
                 if current_mcid == target_mcid: # same source!
                     remote_zone_found = True
                     _logger.debug(''.join(('set_source - using play zone in MusicCast device ',
@@ -469,6 +510,15 @@ class Zone(object):
         # if we are here, it means we did not find the source in any non MC device either
         raise mcx.LogicError(''.join(('No available source ', src_id, ' for this zone.')))
 
+    def get_sources(self):
+        ''' docstring
+
+        '''
+        # TODO: implement
+        self._response = 'this,should,be,a,list,of,valid,sources'
+        self._reason = 'for now it does not work'
+        return
+
     def set_playback(self, action, src_id=None):
         '''Triggers the specified play-back action.
 
@@ -477,7 +527,6 @@ class Zone(object):
         The zone `zonesource` is expected to be MusicCast otherwise nothing can
         be done anyway.
 
-
         Args:
             action (string): the action to send to the MusicCast device.
             src_id (string): the internal keyword of the source to be
@@ -485,25 +534,25 @@ class Zone(object):
                 arguments.
         '''
         # Find which zone (remote or not) we need to control to execute this command
-        control_zone = self.get_current_input().get_source_zone()
+        control_zone = self._get_current_input().get_control_zone()
         # Check if it is MusicCast Ready, otherwise there is nothing to do
         control_zone.device.is_mcready(raises=True)
-        control_zone.power_on(raises=True)
+        control_zone.is_power_on(raises=True)
         # Resolve the source and check it is the one playing
         if src_id is None: src_id = self.device.system.get_argument('source')
-        source = control_zone.get_current_input()
+        source = control_zone._get_current_input()
         if src_id != source.id:
             raise mcx.LogicError(''.join(('Can not operate source <', src_id,
                                           '> while device <', control_zone.device.id,
                                           '> is playing <', source.id, '>.')))
 
         # Transform action
-        mcaction = self.transform_arg('action', invalue=action)
+        mcaction = self._transform_arg('action', invalue=action)
 
         # Send command
         control_zone.device.conn.mcrequest(source.playinfo_type.type,
                                            ''.join(('setPlayback?playback=', mcaction)))
-        control_zone.send_reply('OK', ''.join(('playback set to ', action)))
+        #control_zone.send_reply('OK', ''.join(('playback set to ', action)))
         return
 
     def set_preset(self, src_id=None):
@@ -516,13 +565,13 @@ class Zone(object):
                 arguments.  It can only be **tuner** or **netusb**.
         '''
         # Find which zone (remote or not) we need to control to execute this command
-        ctrl_zone = self.get_current_input().get_source_zone()
+        ctrl_zone = self._get_current_input(raises=True).get_control_zone()
         # Check if it is MusicCast Ready, otherwise there is nothing to do
         ctrl_zone.device.is_mcready(raises=True)
-        ctrl_zone.power_on(raises=True)
+        ctrl_zone.is_power_on(raises=True)
         # Resolve the source and check it is the one playing
         if src_id is None: src_id = self.device.system.get_argument('source')
-        src = ctrl_zone.get_current_input()
+        src = ctrl_zone._get_current_input()
         if src_id != src.id:
             raise mcx.LogicError(''.join(('Can''t preset <', src_id,
                                           '> while device <', ctrl_zone.device.id,
@@ -541,8 +590,8 @@ class Zone(object):
 
         # Send the command
         ctrl_zone.device.conn.mcrequest(qualifier, cmdtxt)
-        ctrl_zone.send_reply('OK', ''.join(('preset ', src.mcid,
-                                               ' to number ', str(preset_num))))
+        #ctrl_zone.send_reply('OK', ''.join(('preset ', src.mcid,
+        #                                    ' to number ', str(preset_num))))
         return
 
     def str_status(self):
@@ -571,14 +620,3 @@ class Zone(object):
         lst.append('\n\t\tState is')
         lst.append(self.str_status())
         return ''.join(lst)
-
-    def send_reply(self, response, reason):
-        ''' docstring '''
-        #=======================================================================
-        # imsg = self.device.system.copy()
-        # imsg.gateway = None
-        # imsg.device = self.device.data.id
-        # imsg.source = app.Properties.name
-        # self.device.system.msgl.push(imsg.reply(response, reason))
-        #=======================================================================
-        return
