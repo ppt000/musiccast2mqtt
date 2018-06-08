@@ -1,63 +1,88 @@
 {
-  "root": "home",
-  "topics": ["home/+/musiccast/+/+/+/C", "home/audiovideo/+/+/+/+/C"],
-  "function": {"maptype": "strict",
-    "map": {"audiovideo": "AudioVideo", "lighting": "Lighting"}},
-  "gateway": {"maptype": "loose",
-    "map": {"dummy": "dummy", "musiccast": "musiccast"}},
-  "location": {"maptype": "strict",
-    "map": {
-      "dining_room": "diningroom",
-      "kitchen": "kitchen",
-      "master_bathroom": "masterbathroom",
-      "office": "office",
-      "terrace": "patio"
-    }
-  },
-  "device": {"maptype": "loose",
-    "map": {
-      "cdplayer": "CD",
-      "dvdplayer": "DVD",
-      "skybox": "SKY",
-      "tuner": "TUNER"
-    }
-  },
-  "sender": {"maptype": "none"},
-  "action": {"maptype": "strict",
-    "map": {
-      "light_off": "LIGHT_OFF",
-      "light_on": "LIGHT_ON",
-      "audio_off": "POWER_OFF",
-      "audio_on": "POWER_ON",
-      "source_cd": "SOURCE_CD",
-      "source_dvd": "SOURCE_DVD",
-      "source_ipod": "SOURCE_IPOD",
-      "source_sky": "SOURCE_SKY",
-      "source_tuner": "SOURCE_TUNER",
-      "set_volume": "SET_VOLUME",
-      "volume_down": "VOL_DN",
-      "volume_up": "VOL_UP",
-      "mute_off": "MUTE_OFF",
-      "mute_on": "MUTE_ON",
-      "mute_toggle": "MUTE_TGL",
-      "get_inputs": "GET_INPUTS",
-      "set_input": "SET_INPUT",
-      "get_sources": "GET_SOURCES",
-      "set_source": "SET_SOURCE",
-      "source_netradio": "SOURCE_NETRADIO",
-      "source_spotify": "SOURCE_SPOTIFY",
-      "cd_back": "CD_BACK",
-      "cd_forward": "CD_FORWARD",
-      "cd_pause": "CD_PAUSE",
-      "cd_play": "CD_PLAY",
-      "cd_stop": "CD_STOP",
-      "spotify_playpause": "SPOTIFY_PLAYPAUSE",
-      "spotify_back": "SPOTIFY_BACK",
-      "spotify_forward": "SPOTIFY_FORWARD",
-      "tuner_preset": "TUNER_PRESET",
-      "netradio_preset": "NETRADIO_PRESET"
-    }
-  },
-  "argkey": {"maptype": "none"},
-  "argvalue": {"maptype": "none"}
+	"function": {
+		"map": {
+			"AudioVideo": ["audiovideo"],
+			"Lighting": ["lighting"]
+		},
+		"maptype": "strict"
+	},
+	"sender": {
+		"maptype": "none"
+	},
+	"topics": ["home/+/musiccast/+/+/+/C",
+	"home/audiovideo/+/+/+/+/C"],
+	"action": {
+		"map": {
+			"POWER_ON": ["audio_on"],
+			"INPUT_SPOTIFY": ["input_spotify"],
+			"SET_SOURCE": ["set_source"],
+			"POWER_OFF": ["audio_off"],
+			"VOLUME_DOWN": ["volume_down"],
+			"VOLUME_UP": ["volume_up"],
+			"MUTE_TOGGLE": ["mute_toggle"],
+			"GET_INPUTS": ["get_inputs"],
+			"GET_SOURCES": ["get_sources"],
+			"INPUT_NETRADIO": ["input_netradio"],
+			"MUTE_OFF": ["mute_off"],
+			"SPOTIFY_PLAYPAUSE": ["spotify_playpause"],
+			"SPOTIFY_FORWARD": ["spotify_forward"],
+			"SOURCE_NETRADIO": ["source_netradio"],
+			"TUNER_PRESET": ["tuner_preset"],
+			"SOURCE_TUNER": ["source_tuner"],
+			"INPUT_TUNER": ["input_tuner"],
+			"SOURCE_CD": ["source_cd"],
+			"SOURCE_SPOTIFY": ["source_spotify"],
+			"CD_PAUSE": ["cd_pause"],
+			"CD_PLAY": ["cd_play"],
+			"SPOTIFY_BACK": ["spotify_back"],
+			"NETRADIO_PRESET": ["netradio_preset"],
+			"SET_VOLUME": ["set_volume"],
+			"SET_INPUT": ["set_input"],
+			"INPUT_CD": ["input_cd"],
+			"MUTE_ON": ["mute_on"],
+			"CD_BACK": ["cd_back"],
+			"CD_STOP": ["cd_stop"],
+			"CD_FORWARD": ["cd_forward"]
+		},
+		"maptype": "strict"
+	},
+	"location": {
+		"map": {
+			"livingroom": ["living_room"],
+			"office": ["office"],
+			"masterbathroom": ["master_bathroom"],
+			"diningroom": ["dining_room"],
+			"patio": ["terrace"],
+			"kitchen": ["kitchen"]
+		},
+		"maptype": "strict"
+	},
+	"device": {
+		"map": {
+			"Satellite": ["satellite"],
+			"AudioMatrix": ["audiomatrix"],
+			"DVD": ["dvdplayer"],
+			"BluRayPlayer": ["blurayplayer"],
+			"SKY": ["skybox"],
+			"CD": ["cdplayer"],
+			"NetworkPlayer": ["networkplayer"],
+			"TUNER": ["tuner"],
+			"AVLivingRoom": ["avlivingroom"]
+		},
+		"maptype": "loose"
+	},
+	"argvalue": {
+		"maptype": "none"
+	},
+	"root": "home",
+	"gateway": {
+		"map": {
+			"dummy": ["dummy"],
+			"musiccast": ["musiccast"]
+		},
+		"maptype": "loose"
+	},
+	"argkey": {
+		"maptype": "none"
+	}
 }
