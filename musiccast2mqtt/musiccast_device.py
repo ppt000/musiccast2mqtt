@@ -1,10 +1,8 @@
-'''
-Assumptions on Devices:
+''' Declaration of Device objects and PlayInfoType structures.
 
-- the gateway knows NOTHING about the state of non MusicCast at any point in time; their state can
-  change without the gateway knowing and their state at startup is unknown.
-
+.. reviewed 31MAY2018
 '''
+
 import time
 import musiccast2mqtt.musiccast_exceptions as mcx
 import musiccast2mqtt.musiccast_comm as mcc
@@ -22,7 +20,15 @@ _STALE_CONNECTION = 300 # seconds, maximum time of inactivity before Yamaha API 
 class Device(object):
     ''' Represents a device in the audio-video system.
 
-    Most methods are used by the lambdas to deal with the incoming events.
+    Most methods are used by the lambdas in :mod:`musiccast_data.py`
+    to deal with the incoming events.
+
+    Any error in the initialisation and the device is not include in the system tree.
+
+    Assumptions on Devices:
+
+    - the gateway knows NOTHING about the state of non MusicCast at any point in time; their state can
+      change without the gateway knowing and their state at startup is unknown.
 
     Args:
         device_data (JSON string): a JSON type string representing a device.
@@ -51,7 +57,6 @@ class Device(object):
         self._sources_d = {src.id:src for src in self.sources}
         self._inputs_d = {src.id:src for src in self.sources}
         self._inputs_d.update({feed.id:feed for feed in self.feeds})
-        # TODO: enforce in schema that a device needs to have at least one input.
         zones = []
         for zone_data in device_data['zones']: zones.append(Zone(zone_data, self))
         self.zones = tuple(zones)
@@ -59,20 +64,23 @@ class Device(object):
         if self.musiccast:  # this is a MusicCast device
             self._ready = False
             self._load_time = 0 # time when load_musiccast was last called
-            self.conn = mcc.musiccastComm(self._host)
+            self.conn = mcc.musiccastComm(self._host, self.system.listen_port)
             self._dev_info = None
             self._features = None
             # dictionaries to help the event processor, initialised in load_musiccast
             self._mcinfotype_d = {}
             self._mczone_d = {}
-            #self.mcsource_dict = {}
             # refresh related attribute
             self._zone_index = 0
             self._zone_num = len(self.zones)
         return
 
     def post_init(self):
-        ''' Docstring'''
+        ''' Second round of initialisation.
+
+        This method updates attributes that need the whole tree to be already updated with the
+        data from the system definition.
+        '''
         for inp in self.inputs: inp.post_init()
 
     def is_musiccast(self, raises=False):
@@ -116,49 +124,35 @@ class Device(object):
     def load_musiccast(self):
         '''Initialisation of MusicCast related characteristics.
 
-        This method will make HTTP requests to all relevant devices,  In case of failure, the device
-        `_ready` attribute is simply left `False` and the device will not be available to be
-        operated. This method can be called again at any time to try again this initialisation.
+        Updates all MusicCast related attributes, by making the relevant HTTP requests to all
+        relevant devices.
+        On success, the ``_ready`` attribute is set to ``True``, otherwise it is simply left to
+        ``False`` and the device will not be available to be operated.
 
-        Returns:
-            boolean: True if initialisation succeeded
+        This method can be called again at any time to try again this initialisation.
+        Any call when ``_ready`` is ``False`` resets the ``_load_time`` attribute, so that
+        appropriate logic can prevent asking again too often.
+
+        Raises:
+            ConfigError, CommsError.
         '''
         if self._ready: return True # ready already!
         self._load_time = time.time()
-        try:
-            # Retrieve the device infos
-            if not self._dev_info:
-                self._dev_info = self.conn.mcrequest('system', 'getDeviceInfo')
-            # Retrieve the device features
-            if not self._features:
-                self._features = self.conn.mcrequest('system', 'getFeatures')
-            for zone in self.zones:
-                zone.load_musiccast()
-                self._mczone_d[zone.mcid] = zone
-            for source in self.sources:
-                source.load_musiccast()
-        except mcx.CommsError as err:
-            _logger.info(''.join(('Cannot initialise MusicCast device <', self.id,
-                                  '>. Error:\n\t', repr(err))))
-            return False
-        except mcx.ConfigError as err:
-            # These are unrecoverable errors # TODO: check if that is True; what do we do then?
-            _logger.info(''.join(('MusicCast device ', self.id,
-                                  ' has to be disabled. Error:\n\t', repr(err))))
-            return False
+        # Retrieve the device infos
+        if not self._dev_info:
+            self._dev_info = self.conn.mcrequest('system', 'getDeviceInfo')
+        # Retrieve the device features
+        if not self._features:
+            self._features = self.conn.mcrequest('system', 'getFeatures')
+        for zone in self.zones:
+            zone.load_musiccast()
+            self._mczone_d[zone.mcid] = zone
+        for source in self.sources:
+            source.load_musiccast()
         # success
         self._ready = True
         _logger.debug(''.join(('MusicCast initialisation of device <', self.id, '> successful.')))
-        return True
-
-    #===============================================================================================
-    # def get_input(self, input_id):
-    #     ''' Returns the Source or Feed object by their id.'''
-    #     try: return self._inputs_d[input_id]
-    #     except KeyError:
-    #         raise mcx.ConfigError(''.join(('Input <', input_id,
-    #                                        '> not found in device <', self.id, '>.')))
-    #===============================================================================================
+        return
 
     def get_yxcid(self, raises=False):
         ''' Returns the Yamaha device id, if it exists.'''
@@ -169,7 +163,16 @@ class Device(object):
             else: return None
 
     def get_zone(self, zone_id=None, zone_mcid=None, raises=False):
-        ''' Docstring'''
+        ''' Returns the :class:`Zone` object from one of its identifications.
+
+        Either identifications can be provided.  The behaviour in case both are provided
+        is determined by the method :meth:`is_zone_id` in :class:`Zone`.
+
+        Args:
+            zone_id (string): the id of the zone searched
+            zone_mcid (string): the MusicCast id of the zone searched
+            raises (boolean): if True, raises an exception instead of returning ``False``
+        '''
         if zone_id is None and zone_mcid is None:
             if raises: raise mcx.ConfigError('No valid Zone id arguments to get Zone.')
             else: return None
@@ -182,19 +185,69 @@ class Device(object):
         else:
             return None
 
+    def get_input(self, input_id=None, input_mcid=None, raises=False):
+        ''' Returns the :class:`Input` object from its id or mcid.
+
+        If input_id is present, then it is used, otherwise input_mcid is used.
+
+        Args:
+            zone_id (string): the id of the zone searched
+            zone_mcid (string): the MusicCast id of the zone searched
+            raises (boolean): if True, raises an exception instead of returning ``False``
+
+        Returns:
+            :class:`Input` object if found, or ``None``
+
+        Raises:
+            ConfigError or LogicError.
+        '''
+        if input_id is not None:
+            try: return self._inputs_d[input_id]
+            except KeyError:
+                if raises:
+                    raise mcx.ConfigError(''.join(('Input <', input_id, '> not found in device <',
+                                                   self.id, '>.')))
+                else: return None
+        elif input_mcid is not None:
+            if not self.musiccast:
+                if raises:
+                    raise mcx.LogicError(''.join(('Can not find MusicCast input <', input_mcid,
+                                                  '> on non-MusicCast device <', self.id, '>.')))
+                else: return None
+            # TODO: make a dictionary to find the MusicCast input out of its MusicCast id.
+            for inp in self.inputs:
+                if inp.mcid == input_mcid: return inp
+            if raises:
+                raise mcx.ConfigError(''.join(('MusicCast input <', input_mcid,
+                                               '> not found in device <', self.id, '>.')))
+            else: return None
+        else: # both ids are None
+            if raises:
+                raise mcx.ConfigError(''.join(('No valid arguments in get_input() on device <',
+                                               self.id, '>.')))
+            else: return None
+
     def sources_by_id(self):
-        ''' Returns the dictionary id -> Source'''
+        ''' Returns the dictionary {id: Source}'''
         return self._sources_d
 
     def get_feature(self, flist):
         ''' Returns a branch from the getFeatures tree.
-        
+
         This method retrieves a branch or leaf from a JSON type object.
         The argument is a list made of strings and/or pairs of string.
         For each string, the method expect to find a dictionary as the next branch,
         and selects the value (which is another branch or leaf) returned by that string as key.
-        For each pair (key, value), it expects to find an array of similar objects, and in that case it
-        searches for the array that contains the right 'value' for that 'key'.
+        For each pair (key, value), it expects to find an array or similar objects,
+        and in that case it searches for the array that contains the right 'value' for that 'key'.
+
+        This method helps in reading the responses from Yamaha MusicCast API.
+
+        Args:
+            flist: list representing a leaf or a branch from a JSON type of string
+
+        Raises:
+            CommsError, ConfigError.
         '''
         branch = self._features
         if isinstance(flist, basestring): # Python 3: isinstance(arg, str)
@@ -214,7 +267,7 @@ class Device(object):
                     key = arg[0]
                     value = arg[1]
                 except (IndexError, TypeError):
-                    raise ValueError(''.join(('Argument <', str(arg), '> should be a pair.')))
+                    raise mcx.CommsError(''.join(('Argument <', str(arg), '> should be a pair.')))
                 found = False
                 for obj in branch: # assume branch is an array
                     try: found = (obj[key] == value)
@@ -269,14 +322,13 @@ class Device(object):
 
     def find_mczone(self, mcid):
         ''' Returns the MusicCast zone from its id.
-        
-        CHECK: this is redundant with get_zone().
 
         Needed by the event processor, it is called by the lambdas.
+        This is redundant with get_zone() but probably faster.
 
         Args:
-            mcid (string): MusicCast id of the zone.  Normally one of 'main,
-                zone2, zone3, zone4'.  See list _ZONES.
+            mcid (string): MusicCast id of the zone.  Normally one of ``main``,
+                ``zone2``, ``zone3``, ``zone4``.  See list ``_ZONES``.
 
         Raises:
             ConfigError: if the zone is not found, either because it is not a
@@ -287,41 +339,18 @@ class Device(object):
             raise mcx.ConfigError(''.join(('MusicCast zone <', mcid, '> not found in device <',
                                            self.id, '>.')))
 
-    def get_input(self, input_id=None, input_mcid=None):
-        ''' Returns the Input object from its id or mcid.
-
-        If input_id is present, then it is used, otherwise input_mcid is used.
-        '''
-        if input_id is not None:
-            try: return self._inputs_d[input_id]
-            except KeyError:
-                raise mcx.ConfigError(''.join(('Input <', input_id, '> not found in device <',
-                                               self.id, '>.')))
-        elif input_mcid is not None:
-            if not self.musiccast:
-                raise mcx.LogicError(''.join(('Can not find MusicCast input <', input_mcid,
-                                              '> on non-MusicCast device <', self.id, '>.')))
-            # TODO: make a dictionary to find the MusicCast input out of its MusicCast id.
-            for inp in self.inputs:
-                if inp.mcid == input_mcid: return inp
-            raise mcx.ConfigError(''.join(('MusicCast input <', input_mcid,
-                                           '> not found in device <', self.id, '>.')))
-        else:
-            raise mcx.ConfigError(''.join(('No valid arguments in get_input() on device <',
-                                           self.id, '>.')))
-
     def refresh(self):
         ''' Refresh status of device.
 
         There are 2 reasons why one needs to refresh the status of a device:
 
-        1- because the MusicCast devices need to receive at least one request every 10 minutes (with
-        the right headers) so that they keep sending events;
+        1- because the MusicCast devices need to receive at least one request every 10 minutes
+           (with the right headers) so that they keep sending events;
 
-        2- because this gateway has sent a **set** command and it is good to check if the command
-        has indeed *delivered*.  It seems though that one needs to wait a bit before requesting
-        a fresh status as experience shows that firing a **getStatus** request straight after a
-        command does not reflect the change even if the command is supposed to be successful.
+        2- when this gateway has sent a **set** command and it is good to check if the command
+           has indeed *delivered*.  It seems though that one needs to wait a bit before requesting
+           a fresh status as experience shows that firing a **getStatus** request straight after a
+           command does not reflect the change even if the command is supposed to be successful.
 
         '''
         now = time.time()
@@ -333,7 +362,7 @@ class Device(object):
         # check if a request has been made *too* recently
         if now - self.conn.request_time < _BUFFER_LAG:
             return
-        # check now if there are zones that have requested a status refresh
+        # check if there are zones that have requested a status refresh
         for _count in range(self._zone_num):
             zone = self.zones[self._zone_index]
             self._zone_index = (self._zone_index + 1) % self._zone_num
@@ -346,7 +375,8 @@ class Device(object):
             _logger.debug('Refreshing the connection after long inactivity.')
             zone = self.zones[self._zone_index]
             self._zone_index = (self._zone_index + 1) % self._zone_num
-            zone.refresh_status()
+            try: zone.refresh_status()
+            except mcx.AnyError: pass # TODO: improve here, otherwise it is going to retry at every loop
             return
 
 class PlayInfoType(object):
@@ -386,7 +416,8 @@ class PlayInfoType(object):
         ''' Retrieves the preset_info structure.
 
         The `getPresetInfo` request involves only types **tuner** and **netusb**. Treatment in
-        either case is different, see the Yamaha doc for details.
+        either case is different, see the Yamaha doc for details. This method is supposed to be
+        overridden in both cases.
         '''
         raise mcx.LogicError(''.join(('Type <', self.type, '> does not have preset info.')))
 
@@ -395,8 +426,7 @@ class PlayInfoType(object):
 
         Only concerns MusicCast types **cd** and **netusb**.
         The **play_time** event get sent every second by MusicCast devices
-        once a cd or a streaming service starts playing.  Maybe it is not
-        necessary to process it every second.
+        once a cd or a streaming service starts playing.
 
         Args:
             value (integer in string form): the new value of play_time.
@@ -414,7 +444,12 @@ class PlayInfoType(object):
         raise mcx.LogicError(''.join(('Type <', self.type, '> does not have play message info.')))
 
     def get_preset_arguments(self, source, preset_num):
-        ''' docstring.'''
+        ''' Returns a dictionary with the preset information.
+
+        Args:
+            source (:class:`Source`): the source with the preset information
+            preset_num (int): the preset number to retrieve
+        '''
         raise mcx.LogicError(''.join(('Source ', source.mcid, ' does not have presets.')))
 
 class Tuner(PlayInfoType):
@@ -436,7 +471,7 @@ class Tuner(PlayInfoType):
         # load the max_preset
         try: self._max_presets = int(self.device.get_feature(('tuner', 'preset', 'num')))
         except ValueError:
-                raise mcx.CommsError('getFeatures item <max_presets> not an int.')
+            raise mcx.LogicError('getFeatures item <max_presets> not an int.')
         # Load the preset_info
         self._preset_info = None
         self.update_preset_info()
@@ -467,8 +502,13 @@ class Tuner(PlayInfoType):
         return
 
     def get_preset_arguments(self, source, preset_num):
-        ''' docstring.'''
-        args={}
+        ''' Returns a dictionary with the preset information.
+
+        Args:
+            source (:class:`Source`): the source with the preset information
+            preset_num (int): the preset number to retrieve
+        '''
+        args = {}
         if self._preset_separate:
             args['band'] = 'dab' # for now that's the only preset we want to use.
             # TODO: include other bands selection.
@@ -499,6 +539,7 @@ class CD(PlayInfoType):
 
 class NetUSB(PlayInfoType):
     '''NetUSB specific information.
+
     Args:
         device (Device object): parent device.
     '''
@@ -510,7 +551,7 @@ class NetUSB(PlayInfoType):
         # load the max_preset
         try: self._max_presets = int(self.device.get_feature(('netusb', 'preset', 'num')))
         except ValueError:
-                raise mcx.CommsError('getFeatures item <max_presets> not an int.')
+            raise mcx.CommsError('getFeatures item <max_presets> not an int.')
         # Load the preset_info
         self._preset_info = None
         self.update_preset_info()
@@ -549,7 +590,12 @@ class NetUSB(PlayInfoType):
         return
 
     def get_preset_arguments(self, source, preset_num):
-        ''' docstring'''
+        ''' Returns a dictionary with the preset information.
+
+        Args:
+            source (:class:`Source`): the source with the preset information
+            preset_num (int): the preset number to retrieve
+        '''
         args = {}
         if source.mcid == 'net_radio': args['band'] = ''
         else: # source.mcid not 'net_radio'
