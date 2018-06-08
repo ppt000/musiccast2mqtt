@@ -1,11 +1,14 @@
-'''Data for the MusicCast system.'''
+''' Dispatch tables for the MusicCast system.
 
-TRANSFORM_ARG = {
+.. reviewed 31MAY2018
+'''
+
+TRANSFORM_ARG = { # [0]=internal->musiccast, [1]=musiccast->internal
     'power':    (lambda self, value: 'on' if value else 'standby',
                  lambda self, value: value == 'on'),
     'mute':     (lambda self, value: 'true' if value else 'false',
-                 lambda self, value: value == 'on'),
-    'volume':   (lambda self, value: str(int(int(value) * self._volume_range / 100)),
+                 lambda self, value: value == 'true'),
+    'volume':   (lambda self, value: int(int(value) * self._volume_range / 100),
                  lambda self, value: int(int(value) * 100 / self._volume_range)),
     'input':    (lambda self, value: value,
                  lambda self, value: value),
@@ -25,7 +28,7 @@ Transforms arguments from internal keyword to MusicCast keyword and back.
 
 The value for each key is a pair of lambdas; the first one transforms its arguments
 from internal representation to Musiccast, and the second one does the reverse.
-The lambdas have to be called by a Zone object.
+The lambdas have to be called by a :class:`Zone` object.
 '''
 
 ACTIONS = {
@@ -38,11 +41,13 @@ ACTIONS = {
     'MUTE_ON':          lambda self: self.set_mute(True),
     'MUTE_OFF':         lambda self: self.set_mute(False),
     'MUTE_TOGGLE':      lambda self: self.set_mute(not self._mute),
-    'GET_INPUTS':       lambda self: self.send_reply(),
-    # TODO: send message reply with list of available inputs
+    'GET_INPUTS':       lambda self: self.get_inputs(),
     'SET_INPUT':        lambda self: self.set_input(),
-    'GET_SOURCES':      lambda self: self.send_reply(),
-    # TODO: send message reply with list of available sources
+    'INPUT_CD':        lambda self: self.set_input('cd'),
+    'INPUT_NETRADIO':  lambda self: self.set_input('net_radio'),
+    'INPUT_TUNER':     lambda self: self.set_input('tuner'),
+    'INPUT_SPOTIFY':   lambda self: self.set_input('spotify'),
+    'GET_SOURCES':      lambda self: self.get_sources(),
     'SET_SOURCE':       lambda self: self.set_source(),
     'SOURCE_CD':        lambda self: self.set_source('cd'),
     'SOURCE_NETRADIO':  lambda self: self.set_source('net_radio'),
@@ -62,7 +67,7 @@ ACTIONS = {
 '''
 The dictionary with all the data to process the various commands.
 
-It has to be called from an instance of the class Zone.
+It has to be called from a :class:`Zone` object.
 '''
 
 EVENTS = { # lambdas to be called by a Device object; value is always a string
@@ -76,19 +81,19 @@ EVENTS = { # lambdas to be called by a Device object; value is always a string
     'stereo_pair_info_updated': None # not implemented
 },
 'main': {
-    'power': lambda self, value: self.find_mczone('main').update_power(value),
-    'input': lambda self, value: self.find_mczone('main').update_input(value),
-    'volume': lambda self, value: self.find_mczone('main').update_volume(value),
-    'mute': lambda self, value: self.find_mczone('main').update_mute(value),
+    'power': lambda self, value: self.find_mczone('main').update_power(mcvalue=value),
+    'input': lambda self, value: self.find_mczone('main').update_input(mcvalue=value),
+    'volume': lambda self, value: self.find_mczone('main').update_volume(mcvalue=value),
+    'mute': lambda self, value: self.find_mczone('main').update_mute(mcvalue=value),
     'status_updated': lambda self, value:
         self.find_mczone('main').refresh_status() if value else None,
     'signal_info_updated': None # not implemented; use 'getSignalInfo'
 },
 'zone2': {
-    'power': lambda self, value: self.find_mczone('zone2').update_power(value),
-    'input': lambda self, value: self.find_mczone('zone2').update_input(value),
-    'volume': lambda self, value: self.find_mczone('zone2').update_volume(value),
-    'mute': lambda self, value: self.find_mczone('zone2').update_mute(value),
+    'power': lambda self, value: self.find_mczone('zone2').update_power(mcvalue=value),
+    'input': lambda self, value: self.find_mczone('zone2').update_input(mcvalue=value),
+    'volume': lambda self, value: self.find_mczone('zone2').update_volume(mcvalue=value),
+    'mute': lambda self, value: self.find_mczone('zone2').update_mute(mcvalue=value),
     'status_updated': lambda self, value:
         self.find_mczone('zone2').refresh_status() if value else None,
     'signal_info_updated': None, # not implemented; use 'getSignalInfo'
@@ -149,6 +154,8 @@ EVENTS = { # lambdas to be called by a Device object; value is always a string
 }
 '''
 Dictionary to decode incoming events.
+
+The lambdas should be called by a :class:`Device` object.
 '''
 
 _RESPONSE_CODES = {
