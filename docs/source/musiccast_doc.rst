@@ -1,4 +1,4 @@
-.. This document has been reviewed by Paolo on 24May2018.
+.. This document has been reviewed on 24May2018.
 
 **************************
 Yamaha MusicCast Interface
@@ -65,7 +65,7 @@ as the first (and only) argument to the launch command, for example:
 
 .. code-block:: none
 
-    musiccast2mqtt musiccast_sysdef.json
+    musiccast2mqtt musiccast2mqtt.conf
 
 If the argument given is an absolute path then there is no ambiguity.  If it is a relative path,
 the application will look first in the current directory and then in the installation directory
