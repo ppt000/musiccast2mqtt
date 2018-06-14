@@ -136,7 +136,7 @@ class Device(object):
         Raises:
             ConfigError, CommsError.
         '''
-        if self._ready: return True # ready already!
+        if self._ready: return # ready already!
         self._load_time = time.time()
         # Retrieve the device infos
         if not self._dev_info:
