@@ -22,15 +22,15 @@ _SOCKET_TIMEOUT = 0.01 # The time-out when checking the socket for incoming even
 # MCSOCKET = None
 # MCPORT = None
 # _THIS = sys.modules[__name__]
-# 
+#
 # def set_socket(listen_port):
 #     ''' Instantiates a socket and binds it to the port provided.
-# 
+#
 #     Also initialises the 2 module variables MCSOCKET and MCPORT.
-# 
+#
 #     Args:
 #         listen_port (int): the local port to bind to the socket.
-# 
+#
 #     Raises:
 #         CommsError: in case of failure to bind the socket to the port.
 #     '''
