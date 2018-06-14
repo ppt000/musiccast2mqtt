@@ -10,9 +10,8 @@ _logger = app.Properties.get_logger(__name__)
 
 import musiccast2mqtt.musiccast_exceptions as mcx
 from musiccast2mqtt.musiccast_system import System
-#from musiccast2mqtt.musiccast_data import ACTIONS
 
-
+_DEFAULT_LISTEN_PORT = 41100 # TODO: Find proper default listening port
 
 class musiccastInterface(object):
     '''The Interface.
@@ -40,7 +39,7 @@ class musiccastInterface(object):
             _logger.info('The "sysdefpath" option is not defined in the configuration file.'\
                          'Using ".".')
             jsonpath = '.'
-        jsonfilepath = app.Properties.get_path('.json', jsonpath)
+        jsonfilepath = app.Properties.get_path(jsonpath, extension='.json')
         # load the system definition data; errors are fatal.
         try:
             with open(jsonfilepath, 'r') as json_file:
@@ -51,8 +50,14 @@ class musiccastInterface(object):
         except ValueError: # python 3 has a different exception name
             _logger.critical(''.join(('Can''t JSON-parse ', jsonfilepath, '. Abort.')))
             raise
+        # load the port to listen to for MusicCast events
+        try: listenport = params['listenport']
+        except KeyError:
+            listenport = _DEFAULT_LISTEN_PORT
+            _logger.info(''.join(('The <listenport> option is not defined in the configuration file.',
+                                  ' Using <', _DEFAULT_LISTEN_PORT, '>.')))
         # instantiate the system structure
-        self._system = System(json_data, self._msgl_out)
+        self._system = System(json_data, listenport, self._msgl_out)
         # create the {device_id: device} dictionary
         #self._mcdevices = {dev.id: dev for dev in self._system.devices if dev.musiccast}
 
