@@ -66,9 +66,9 @@ class System(object):
             in case the unpacking of the JSON data fails, for whatever reason.
     '''
 
-    def __init__(self, json_data, msgl):
+    def __init__(self, json_data, listenport, msgl):
         # Initialise the events listener.
-        self.listen_port = 41100 # TODO: check what port to use and makeit an option in the configuration
+        self.listen_port = listenport
         #mcc.set_socket(listen_port)
         self._listener = musiccastListener(self.listen_port)
         # Assign locally the message attributes
