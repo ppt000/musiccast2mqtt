@@ -3,6 +3,7 @@
 .. reviewed 31MAY2018
 '''
 
+# pylint: disable=bad-whitespace
 TRANSFORM_ARG = { # [0]=internal->musiccast, [1]=musiccast->internal
     'power':    (lambda self, value: 'on' if value else 'standby',
                  lambda self, value: value == 'on'),
@@ -12,16 +13,15 @@ TRANSFORM_ARG = { # [0]=internal->musiccast, [1]=musiccast->internal
                  lambda self, value: int(int(value) * 100 / self._volume_range)),
     'input':    (lambda self, value: value,
                  lambda self, value: value),
-        # Assume same names between internal and MusicCast, for now
+    # Assume same names between internal and MusicCast, for now
     'source':   (lambda self, value: value,
                  lambda self, value: value),
-        # Assume same names between internal and MusicCast, for now
+    # Assume same names between internal and MusicCast, for now
     'action':   (lambda self, value: value,
                  lambda self, value: value),
-        # Assume same names between internal and MusicCast, for now
+    # Assume same names between internal and MusicCast, for now
     'preset':   (lambda self, value: value,
                  lambda self, value: value),
-        # preset number, could be an int?
     }
 '''
 Transforms arguments from internal keyword to MusicCast keyword and back.
@@ -71,53 +71,53 @@ It has to be called from a :class:`Zone` object.
 '''
 
 EVENTS = { # lambdas to be called by a Device object; value is always a string
-'system': {
-    'bluetooth_info_updated': None, # not implemented; use 'getBluetoothInfo'
-    'func_status_updated': None, # not implemented; use 'getFuncStatus'
-    'speaker_settings_updated': None, # not implemented 
-    'name_text_updated': None, # not implemented; use 'getNameText'
-    'tag_updated': None, # not implemented
-    'location_info_updated': None, # not implemented; use 'getLocationInfo'
-    'stereo_pair_info_updated': None # not implemented
-},
-'main': {
-    'power': lambda self, value: self.find_mczone('main').update_power(mcvalue=value),
-    'input': lambda self, value: self.find_mczone('main').update_input(mcvalue=value),
-    'volume': lambda self, value: self.find_mczone('main').update_volume(mcvalue=value),
-    'mute': lambda self, value: self.find_mczone('main').update_mute(mcvalue=value),
-    'status_updated': lambda self, value:
-        self.find_mczone('main').refresh_status() if value else None,
-    'signal_info_updated': None # not implemented; use 'getSignalInfo'
-},
-'zone2': {
-    'power': lambda self, value: self.find_mczone('zone2').update_power(mcvalue=value),
-    'input': lambda self, value: self.find_mczone('zone2').update_input(mcvalue=value),
-    'volume': lambda self, value: self.find_mczone('zone2').update_volume(mcvalue=value),
-    'mute': lambda self, value: self.find_mczone('zone2').update_mute(mcvalue=value),
-    'status_updated': lambda self, value:
-        self.find_mczone('zone2').refresh_status() if value else None,
-    'signal_info_updated': None, # not implemented; use 'getSignalInfo'
-},
-'zone3': {},
-'zone4': {},
-'tuner': {
-    'play_info_updated': lambda self, value:
-        self.find_infotype('tuner').update_play_info() if value else None,
-    'preset_info_updated': lambda self, value:
-        self.find_infotype('tuner').update_preset_info() if value else None,
-},
-'netusb': {
-    'play_error': None, # TODO: implement
-    'multiple_play_errors': None, # TODO: implement
-    'play_message': lambda self, value:
-        self.find_infotype('netusb').update_play_message(value),
-    'account_updated': None, # not implemented; use 'getAccountStatus'
-    'play_time': lambda self, value:
-        self.find_infotype('netusb').update_play_time(value),
-    'preset_info_updated': lambda self, value:
-        self.find_infotype('netusb').update_preset_info() if value else None,
-    'recent_info_updated': None, # not implemented; use 'getRecentInfo'
-    'preset_control': None, # not implemented; read the value field for info
+    'system': {
+        'bluetooth_info_updated': None, # not implemented; use 'getBluetoothInfo'
+        'func_status_updated': None, # not implemented; use 'getFuncStatus'
+        'speaker_settings_updated': None, # not implemented
+        'name_text_updated': None, # not implemented; use 'getNameText'
+        'tag_updated': None, # not implemented
+        'location_info_updated': None, # not implemented; use 'getLocationInfo'
+        'stereo_pair_info_updated': None # not implemented
+    },
+    'main': {
+        'power': lambda self, value: self.find_mczone('main').update_power(mcvalue=value),
+        'input': lambda self, value: self.find_mczone('main').update_input(mcvalue=value),
+        'volume': lambda self, value: self.find_mczone('main').update_volume(mcvalue=value),
+        'mute': lambda self, value: self.find_mczone('main').update_mute(mcvalue=value),
+        'status_updated': lambda self, value:
+                          self.find_mczone('main').refresh_status() if value else None,
+        'signal_info_updated': None # not implemented; use 'getSignalInfo'
+    },
+    'zone2': {
+        'power': lambda self, value: self.find_mczone('zone2').update_power(mcvalue=value),
+        'input': lambda self, value: self.find_mczone('zone2').update_input(mcvalue=value),
+        'volume': lambda self, value: self.find_mczone('zone2').update_volume(mcvalue=value),
+        'mute': lambda self, value: self.find_mczone('zone2').update_mute(mcvalue=value),
+        'status_updated': lambda self, value:
+                          self.find_mczone('zone2').refresh_status() if value else None,
+        'signal_info_updated': None, # not implemented; use 'getSignalInfo'
+    },
+    'zone3': {},
+    'zone4': {},
+    'tuner': {
+        'play_info_updated': lambda self, value:
+                             self.find_infotype('tuner').update_play_info() if value else None,
+        'preset_info_updated': lambda self, value:
+                               self.find_infotype('tuner').update_preset_info() if value else None,
+    },
+    'netusb': {
+        'play_error': None, # TODO: implement
+        'multiple_play_errors': None, # TODO: implement
+        'play_message': lambda self, value:
+                        self.find_infotype('netusb').update_play_message(value),
+        'account_updated': None, # not implemented; use 'getAccountStatus'
+        'play_time': lambda self, value:
+                     self.find_infotype('netusb').update_play_time(value),
+        'preset_info_updated': lambda self, value:
+                               self.find_infotype('netusb').update_preset_info() if value else None,
+        'recent_info_updated': None, # not implemented; use 'getRecentInfo'
+        'preset_control': None, # not implemented; read the value field for info
         # value is a dict:
         #    {'type': ['store', 'clear', 'recall'],
         #     'num': int,
@@ -128,29 +128,28 @@ EVENTS = { # lambdas to be called by a Device object; value is always a string
         #   has been changed; hopefully if this happens it also triggers a
         #   'play_info_updated' event, which IS implemented, so we don't need
         #   this one.
-    'trial_status': None, # not implemented
+        'trial_status': None, # not implemented
         # value = {'input': (string), 'enable': (boolean)}
-    'trial_time_left': None, # not implemented
+        'trial_time_left': None, # not implemented
         # value = {'input': (string), 'time': (int)}
-    'play_info_updated': lambda self, value:
-        self.find_infotype('netusb').update_play_info() if value else None,
-    'list_info_updated': None # not implemented; use 'getListInfo'
-    # Received a 'play_queue':{'updated':true} on 2018-04-12
-},
-'cd': {
-    'device_status': None, # not implemented; use 'cd_status'
-    'play_time': lambda self, value:
-        self.find_infotype('cd').update_play_time(value),
-    'play_info_updated': lambda self, value:
-        self.find_infotype('cd').update_play_info() if value else None,
-},
-'dist': {
-    'dist_info_updated': None # not implemented
-},
-'clock': {
-    'settings_updated': None # not implemented
-},
-'device_id': None
+        'play_info_updated': lambda self, value:
+                             self.find_infotype('netusb').update_play_info() if value else None,
+        'list_info_updated': None # not implemented; use 'getListInfo'
+    },
+    'cd': {
+        'device_status': None, # not implemented; use 'cd_status'
+        'play_time': lambda self, value:
+                     self.find_infotype('cd').update_play_time(value),
+        'play_info_updated': lambda self, value:
+                             self.find_infotype('cd').update_play_info() if value else None,
+    },
+    'dist': {
+        'dist_info_updated': None # not implemented
+    },
+    'clock': {
+        'settings_updated': None # not implemented
+    },
+    'device_id': None
 }
 '''
 Dictionary to decode incoming events.
@@ -159,27 +158,27 @@ The lambdas should be called by a :class:`Device` object.
 '''
 
 _RESPONSE_CODES = {
-0: 'Successful request',
-1: 'Initialising',
-2: 'Internal Error',
-3: 'Invalid Request (A method did not exist, wasn''t appropriate etc.)',
-4: 'Invalid Parameter (Out of range, invalid characters etc.)',
-5: 'Guarded (Unable to setup in current status etc.)',
-6: 'Time Out',
-99: 'Firmware Updating',
-100: 'Access Error',
-101: 'Other Errors',
-102: 'Wrong User Name',
-103: 'Wrong Password',
-104: 'Account Expired',
-105: 'Account Disconnected/Gone Off/Shut Down',
-106: 'Account Number Reached to the Limit',
-107: 'Server Maintenance',
-108: 'Invalid Account',
-109: 'License Error',
-110: 'Read Only Mode',
-111: 'Max Stations',
-112: 'Access Denied'
+    0: 'Successful request',
+    1: 'Initialising',
+    2: 'Internal Error',
+    3: 'Invalid Request (A method did not exist, wasn''t appropriate etc.)',
+    4: 'Invalid Parameter (Out of range, invalid characters etc.)',
+    5: 'Guarded (Unable to setup in current status etc.)',
+    6: 'Time Out',
+    99: 'Firmware Updating',
+    100: 'Access Error',
+    101: 'Other Errors',
+    102: 'Wrong User Name',
+    103: 'Wrong Password',
+    104: 'Account Expired',
+    105: 'Account Disconnected/Gone Off/Shut Down',
+    106: 'Account Number Reached to the Limit',
+    107: 'Server Maintenance',
+    108: 'Invalid Account',
+    109: 'License Error',
+    110: 'Read Only Mode',
+    111: 'Max Stations',
+    112: 'Access Denied'
 }
 
 _ZONES = ('main', 'zone2', 'zone3', 'zone4')
@@ -207,6 +206,8 @@ _SOUNDPROGRAMS = ('munich_a', 'munich_b', 'munich', 'frankfurt', 'stuttgart',
                   '5ch_stereo', '7ch_stereo', '9ch_stereo', '11ch_stereo',
                   'stereo', 'surr_decoder', 'my_surround', 'target', 'straight',
                   'off')
+
+# pylint: enable=bad-whitespace
 
 if __name__ == '__main__':
     pass
