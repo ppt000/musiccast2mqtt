@@ -1,3 +1,3 @@
 ''' Current version of musiccast2mqtt'''
 
-version = '0.113'
+version = '0.114'
