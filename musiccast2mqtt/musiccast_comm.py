@@ -178,6 +178,12 @@ class musiccastComm(object):
         except httplib.HTTPException as err:
             conn.close()
             raise mcx.CommsError(''.join(('Can\'t get response. Error:\n\t', str(err))))
+        except socket.timeout:
+            conn.close()
+            raise mcx.CommsError('Can\'t get response. Connection timed-out.')
+        except socket.error as err:
+            conn.close()
+            raise mcx.CommsError(''.join(('Can\'t get response. Socket error:\n\t', str(err))))
 
         if response.status != 200:
             conn.close()
