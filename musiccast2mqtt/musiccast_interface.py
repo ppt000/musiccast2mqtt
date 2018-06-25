@@ -11,7 +11,7 @@ _logger = app.Properties.get_logger(__name__)
 import musiccast2mqtt.musiccast_exceptions as mcx
 from musiccast2mqtt.musiccast_system import System
 
-_DEFAULT_LISTEN_PORT = 41100 # TODO: Find proper default listening port
+_DEFAULT_LISTEN_PORT = 41100 # chosen at random within unassigned port numbers
 
 class musiccastInterface(object):
     '''The Interface.
@@ -51,11 +51,15 @@ class musiccastInterface(object):
             _logger.critical(''.join(('Can''t JSON-parse ', jsonfilepath, '. Abort.')))
             raise
         # load the port to listen to for MusicCast events
-        try: listenport = params['listenport']
+        try: listenport = int(params['listenport'])
         except KeyError:
             listenport = _DEFAULT_LISTEN_PORT
             _logger.info(''.join(('The <listenport> option is not defined in the configuration file.',
                                   ' Using <', _DEFAULT_LISTEN_PORT, '>.')))
+        except TypeError:
+            _logger.critical(''.join(('The <listenport> option: <', params['listenport'],
+                                      '> is not an int:. Abort.')))
+            raise
         # instantiate the system structure
         self._system = System(json_data, listenport, self._msgl_out)
         # create the {device_id: device} dictionary
