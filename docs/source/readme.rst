@@ -34,10 +34,3 @@ Next step is to configure the application.  Check the
 `documentation <http://musiccast2mqtt.readthedocs.io/>`_.
 
 Any issues, let me know `here <https://github.com/ppt000/musiccast2mqtt/issues>`_.
-
-Links
-=====
-
-- **Documentation** on `readthedocs <http://musiccast2mqtt.readthedocs.io/>`_.
-- **Source** on `github <https://github.com/ppt000/musiccast2mqtt>`_.
-- **Distribution** on `pypi <https://pypi.org/project/musiccast2mqtt/>`_.

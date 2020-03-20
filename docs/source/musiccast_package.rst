@@ -1,107 +1,67 @@
-musiccast2mqtt package
-======================
+**********************
+musiccast2mqtt Package
+**********************
 
 Warning
--------
-As of 24 May 2018, most of the docstrings are obsolete.
-They will be updated gradually as soon as possible.
+====================
+Work in Progress.
 
-Submodules
-----------
+Modules
+====================
 
-musiccast2mqtt.musiccast\_checks module
----------------------------------------
-
-.. automodule:: musiccast2mqtt.musiccast_checks
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-musiccast2mqtt.musiccast\_comm module
--------------------------------------
-
-.. automodule:: musiccast2mqtt.musiccast_comm
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-musiccast2mqtt.musiccast\_data module
--------------------------------------
-
-.. automodule:: musiccast2mqtt.musiccast_data
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-musiccast2mqtt.musiccast\_device module
----------------------------------------
-
-.. automodule:: musiccast2mqtt.musiccast_device
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-musiccast2mqtt.musiccast\_exceptions module
--------------------------------------------
-
-.. automodule:: musiccast2mqtt.musiccast_exceptions
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-musiccast2mqtt.musiccast\_input module
---------------------------------------
-
-.. automodule:: musiccast2mqtt.musiccast_input
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-musiccast2mqtt.musiccast\_interface module
-------------------------------------------
-
-.. automodule:: musiccast2mqtt.musiccast_interface
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-musiccast2mqtt.musiccast\_start module
---------------------------------------
-
-.. automodule:: musiccast2mqtt.musiccast_start
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-musiccast2mqtt.musiccast\_sysdef\_template\_json module
--------------------------------------------------------
-
-.. automodule:: musiccast2mqtt.musiccast_sysdef_template_json
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-musiccast2mqtt.musiccast\_system module
----------------------------------------
-
-.. automodule:: musiccast2mqtt.musiccast_system
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-musiccast2mqtt.musiccast\_zone module
--------------------------------------
-
-.. automodule:: musiccast2mqtt.musiccast_zone
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-
-Module contents
----------------
+__init__
+----------------------
 
 .. automodule:: musiccast2mqtt
-    :members:
-    :undoc-members:
-    :show-inheritance:
+
+musiccast\_start
+-------------------------------
+
+.. automodule:: musiccast2mqtt.musiccast_start
+
+musiccast\_interface
+-------------------------------
+
+.. automodule:: musiccast2mqtt.musiccast_interface
+
+musiccast\_discovery
+-------------------------------
+
+.. automodule:: musiccast2mqtt.musiccast_discovery
+
+.. tests
+   :no-private-members:
+   .. autodata:: musiccast2mqtt.musiccast_discovery._XML_TAGS
+   :annotation:
+
+musiccast\_listener
+-------------------------------
+
+.. automodule:: musiccast2mqtt.musiccast_listener
+
+musiccast\_device
+-------------------------------
+
+.. automodule:: musiccast2mqtt.musiccast_device
+
+musiccast\_zone
+-------------------------------
+
+.. automodule:: musiccast2mqtt.musiccast_zone
+
+musiccast\_input
+-------------------------------
+
+.. automodule:: musiccast2mqtt.musiccast_input
+
+musiccast\_playinfotype
+-------------------------------
+
+.. automodule:: musiccast2mqtt.musiccast_playinfotype
+
+musiccast\_comm
+-------------------------------
+
+.. automodule:: musiccast2mqtt.musiccast_comm
+
+

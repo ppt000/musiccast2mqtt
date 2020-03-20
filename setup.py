@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 from codecs import open
 from os import path
 
-import musiccast2mqtt.version
+from musiccast2mqtt import __version__
 
 here = path.abspath(path.dirname(__file__))
 
@@ -15,7 +15,7 @@ with open(path.join(here, 'docs/source/readme.rst'), encoding='utf-8') as f:
 
 setup(
     name='musiccast2mqtt',
-    version=musiccast2mqtt.version.version,
+    version=__version__,
     description='MQTT gateway for Yamaha MusicCast devices.',
     long_description=long_description,
     #long_description_content_type='text/x-rst', # apparently it is optional if rst

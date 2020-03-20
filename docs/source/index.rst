@@ -4,15 +4,12 @@
 .. include:: readme.rst
 
 .. toctree::
+   :numbered:
    :maxdepth: 2
    :caption: Contents
 
+    Welcome <readme>
     MusicCast gateway to MQTT <musiccast_doc>
     Usage <musiccast_usage>
     Package Documentation <musiccast_package>
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
+    Indices, Tables and Links <indices_tables_links>

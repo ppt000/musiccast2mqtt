@@ -1,198 +1,144 @@
-''' Declaration of Device objects and PlayInfoType structures.
+''' Declaration of musiccastDevice objects.
 
-.. reviewed 31MAY2018
+musiccastDevice objects are created when a new device is discovered by the discovery process or when it
+is present in the cache file at start-up.
+As soon as they are created, a new thread is started with the its own queue to process incoming
+events or incoming messages.
+
+Notes on refreshing the device:
+
+There are 3 reasons why one needs to refresh the status of a device:
+
+1- because the MusicCast devices need to receive at least one request every 10 minutes
+   (with the right headers) so that they keep sending events;
+
+2- when this gateway has sent a **set** command and one wants to check if the command
+   has been successful.  It seems though that one needs to wait a bit before requesting
+   a fresh status as experience shows that firing a **getStatus** request straight after a
+   command does not reflect the change even if the command is supposed to be successful.
+
+3- when the device is 'down' or 'offline', e.g. it has had a few errors of communication
+   and this application has decided to categorise it as not available but still existing,
+   and therefore at some point it needs to be initialised again (or at least this
+   application should 'try' to initialise it again).
+
+.. reviewed 9 November 2018
 '''
 
 import time
-import musiccast2mqtt.musiccast_exceptions as mcx
-import musiccast2mqtt.musiccast_comm as mcc
+import threading
+import Queue
+import logging
+
+import musiccast2mqtt as mcc
+from musiccast2mqtt.musiccast_comm import musiccastComm
+from musiccast2mqtt.musiccast_playinfotype import Tuner, CD, NetUSB
 from musiccast2mqtt.musiccast_input import Feed, Source
 from musiccast2mqtt.musiccast_zone import Zone
 
-import mqttgateway.utils.app_properties as app
-_logger = app.Properties.get_logger(__name__)
+LOG = logging.getLogger(__name__)
 
-
-_INIT_LAG = 600 # seconds, time between re-trials to initialise MusicCast devices
-_BUFFER_LAG = 5 # seconds, minimum lag between a request and a status refresh
-_STALE_CONNECTION = 300 # seconds, maximum time of inactivity before Yamaha API stops sending events
-
-class Device(object):
+class musiccastDevice(object):
     ''' Represents a device in the audio-video system.
 
-    Most methods are used by the lambdas in :mod:`musiccast_data.py`
-    to deal with the incoming events.
-
-    Any error in the initialisation and the device is not include in the system tree.
-
-    Assumptions on Devices:
-
-    - the gateway knows NOTHING about the state of non MusicCast at any point in time; their state can
-      change without the gateway knowing and their state at startup is unknown.
-
     Args:
-        device_data (JSON string): a JSON type string representing a device.
-        system (System object): the parent system of this device.
+        device_id (string): 12 digit ASCII uniquely representing the device
+        ip_address (string): where to reach the device
+        listenport (int): the port where to listen for incoming events
+        msgl_out: the queue for the outgoing messages
+        device_factory_queue: the device factory queue (...)
+
     '''
 
-    def __init__(self, device_data, system):
-        self.system = system
-        self.id = device_data['id']
-        self._model = device_data.get('model', None)
-        self._protocol = device_data.get('protocol', None)
-        self.gateway = device_data.get('gateway', None)
-        self.musiccast = (self._protocol == 'YEC')
-        if self.musiccast: self._host = device_data['host']
-        else: self._host = device_data.get('host', None)
-        # Load the feeds, sources and zones from the static data. Zones need to be done at the end.
-        feeds = []
-        for feed_data in device_data['feeds']: feeds.append(Feed(feed_data, self))
-        self.feeds = tuple(feeds)
-        sources = []
-        for source_data in device_data['sources']: sources.append(Source(source_data, self))
-        self.sources = tuple(sources)
-        self.inputs = self.feeds + self.sources
-        if not self.inputs:
-            raise mcx.ConfigError(''.join(('Device <', self.id, '> has no inputs.')))
-        self._sources_d = {src.id:src for src in self.sources}
-        self._inputs_d = {src.id:src for src in self.sources}
-        self._inputs_d.update({feed.id:feed for feed in self.feeds})
-        zones = []
-        for zone_data in device_data['zones']: zones.append(Zone(zone_data, self))
-        self.zones = tuple(zones)
-        # MusicCast related attributes
-        if self.musiccast:  # this is a MusicCast device
-            self._ready = False
-            self._load_time = 0 # time when load_musiccast was last called
-            self.conn = mcc.musiccastComm(self._host, self.system.listen_port)
-            self._dev_info = None
-            self._features = None
-            # dictionaries to help the event processor, initialised in load_musiccast
-            self._mcinfotype_d = {}
-            self._mczone_d = {}
-            # refresh related attribute
-            self._zone_index = 0
-            self._zone_num = len(self.zones)
+    def __init__(self, device_id, host, api_port, listenport, msgl_out, device_factory_queue):
+        self._device_mcid = device_id.upper()
+        self._host = host
+        self._api_port = api_port
+        self._listenport = listenport
+        self._device_factory_queue = device_factory_queue
+        self._msgl_out = msgl_out
+        self._msg = None # current message being processed.
+
+        # attributes defined later
+        self.conn = None # connection to send the request
+        self._dev_info = None # dictionary of device information
+        self._serial_num = None # serial number, also called system_id
+        self._model = None
+        self._features = None # dictionary of device features
+        self.zones = [] # list (later tuple) of zones
+        self.zone_d = {} # to help the event processor. {zone_mcid: Zone object}
+        self.feeds = [] # list (later tuple) of feeds
+        self.sources = [] # list (later tuple) of sources
+        self.inputs = None # will be tuple of all inputs (feeds + sources)
+
+        self._inputs_d = {}
+        self._infotype_d = {}
+
+        self._ready = False
+        self._load_time = 0
+
+        # Thread related attributes
+        self.task_queue = Queue.Queue(maxsize=mcc.MAX_QUEUE_SIZE)
+        self._thread = threading.Thread(target=self._device_loop,
+                                        name=''.join(('Device Thread - ', self._device_mcid)))
+
+        # List to implement periodic refresh
+        self._delayed_request_list = []
+
+        # Start the thread for this device
+        self._thread.start()
+        LOG.debug(''.join(('Device thread for <', self.get_id(), '> started.')))
+
         return
 
-    def post_init(self):
-        ''' Second round of initialisation.
+    def get_id(self):
+        ''' Getter for _device_mcid.'''
+        return self._device_mcid
 
-        This method updates attributes that need the whole tree to be already updated with the
-        data from the system definition.
-        '''
-        for inp in self.inputs: inp.post_init()
+    def name(self):
+        ''' Returns a friendly name for the device.'''
+        return ''.join((self._model, '#', self._device_mcid))
 
-    def is_musiccast(self, raises=False):
-        ''' Tests if the device is MusicCast.
+    def get_argument(self, arg):
+        ''' Retrieves argument from arguments dictionary.
 
-        Always returns True if the device is MusicCast.
-
-        Args:
-            raises (boolean): if True, raises an exception when device is not MusicCast, otherwise
-                it just returns False.
-
-        Returns:
-            boolean: True if device is MusicCast, False if not and `raises` is False.
-
-        Raises:
-            LogicError: if the device is not ready and the `raises` argument is True.
-        '''
-        if self.musiccast: return True
-        elif raises: raise mcx.LogicError(''.join(('The device ', self.id, ' is not MusicCast.')))
-        else: return False
-
-    def is_mcready(self, raises=False):
-        ''' Tests if the device is MusicCast and ready to be operated.
-
-        Always returns True if the device is MusicCast Ready.
+        This method is used by the lambdas to get access to the argument of the message.
+        It is essential that the lambdas are running in the same thread as the one that updated
+        the _msg attribute in the same musiccastDevice instance.
 
         Args:
-            raises (boolean): if True, raises an exception when device is not ready, otherwise
-                it just returns False.
-
-        Returns:
-            boolean: True if device is ready, False if not and `raises` is False.
-
-        Raises:
-            LogicError: if the device is not ready and the `raises` argument is True.
+            arg (string): the name of the argument sought
         '''
-        if self.musiccast and self._ready: return True
-        elif raises: raise mcx.LogicError(''.join(('The device ', self.id, ' is not available.')))
-        else: return False
-
-    def load_musiccast(self):
-        '''Initialisation of MusicCast related characteristics.
-
-        Updates all MusicCast related attributes, by making the relevant HTTP requests to all
-        relevant devices.
-        On success, the ``_ready`` attribute is set to ``True``, otherwise it is simply left to
-        ``False`` and the device will not be available to be operated.
-
-        This method can be called again at any time to try again this initialisation.
-        Any call when ``_ready`` is ``False`` resets the ``_load_time`` attribute, so that
-        appropriate logic can prevent asking again too often.
-
-        Raises:
-            ConfigError, CommsError.
-        '''
-        if self._ready: return # ready already!
-        self._load_time = time.time()
-        # Retrieve the device infos
-        if not self._dev_info:
-            self._dev_info = self.conn.mcrequest('system', 'getDeviceInfo')
-        # Retrieve the device features
-        if not self._features:
-            self._features = self.conn.mcrequest('system', 'getFeatures')
-        for zone in self.zones:
-            zone.load_musiccast()
-            self._mczone_d[zone.mcid] = zone
-        for source in self.sources:
-            source.load_musiccast()
-        # success
-        self._ready = True
-        _logger.debug(''.join(('MusicCast initialisation of device <', self.id, '> successful.')))
-        return
-
-    def get_yxcid(self, raises=False):
-        ''' Returns the Yamaha device id, if it exists.'''
-        if not self.is_mcready(raises): return None
-        try: return self._dev_info['device_id']
+        if self._msg is None:
+            raise mcc.LogicError(''.join(('No message to look into.')))
+        try:
+            value = self._msg.arguments[arg]
         except KeyError:
-            if raises: raise mcx.ConfigError('No device_id in getFeatures.')
-            else: return None
+            raise mcc.LogicError(''.join(('No argument <', arg, '> found.')))
+        return value
 
-    def get_zone(self, zone_id=None, zone_mcid=None, raises=False):
-        ''' Returns the :class:`Zone` object from one of its identifications.
-
-        Either identifications can be provided.  The behaviour in case both are provided
-        is determined by the method :meth:`is_zone_id` in :class:`Zone`.
+    def get_zone(self, zone_mcid, raises=False):
+        ''' Returns the :class:`Zone` object from its identification.
 
         Args:
-            zone_id (string): the id of the zone searched
             zone_mcid (string): the MusicCast id of the zone searched
             raises (boolean): if True, raises an exception instead of returning ``False``
         '''
-        if zone_id is None and zone_mcid is None:
-            if raises: raise mcx.ConfigError('No valid Zone id arguments to get Zone.')
+        if zone_mcid is None:
+            if raises: raise mcc.ConfigError('Zone id cannot be None.')
             else: return None
-        for zone in self.zones:
-            if zone.is_zone_id(zone_id=zone_id, zone_mcid=zone_mcid, raises=False):
-                return zone
-        if raises:
-            raise mcx.ConfigError(''.join(('No Zone found with id ',
-                                           zone_id if zone_id else zone_mcid, '.')))
-        else:
-            return None
+        try:
+            return self.zone_d[zone_mcid]
+        except KeyError:
+            if raises: raise mcc.ConfigError(''.join(('Zone id <', zone_mcid,
+                                                      '> not found in device <',
+                                                      self.name(), '>.')))
+            else: return None
 
-    def get_input(self, input_id=None, input_mcid=None, raises=False):
-        ''' Returns the :class:`Input` object from its id or mcid.
-
-        If input_id is present, then it is used, otherwise input_mcid is used.
-
+    def get_input(self, input_mcid, raises=False):
+        ''' Returns the :class:`Input` object from its mcid.
         Args:
-            zone_id (string): the id of the zone searched
-            zone_mcid (string): the MusicCast id of the zone searched
+            input_mcid (string): the MusicCast id of the input searched
             raises (boolean): if True, raises an exception instead of returning ``False``
 
         Returns:
@@ -201,90 +147,21 @@ class Device(object):
         Raises:
             ConfigError or LogicError.
         '''
-        if input_id is not None:
-            try: return self._inputs_d[input_id]
+        if input_mcid is None:
+            if raises:
+                raise mcc.ConfigError(''.join(('No valid input id argument on device <',
+                                               self.name(), '>.')))
+            else:
+                return None
+        else:
+            try:
+                inp = self._inputs_d[input_mcid]
             except KeyError:
                 if raises:
-                    raise mcx.ConfigError(''.join(('Input <', input_id, '> not found in device <',
-                                                   self.id, '>.')))
+                    raise mcc.ConfigError(''.join(('MusicCast input <', input_mcid,
+                                                   '> not found in device <', self.name(), '>.')))
                 else: return None
-        elif input_mcid is not None:
-            if not self.musiccast:
-                if raises:
-                    raise mcx.LogicError(''.join(('Can not find MusicCast input <', input_mcid,
-                                                  '> on non-MusicCast device <', self.id, '>.')))
-                else: return None
-            # TODO: make a dictionary to find the MusicCast input out of its MusicCast id.
-            for inp in self.inputs:
-                if inp.mcid == input_mcid: return inp
-            if raises:
-                raise mcx.ConfigError(''.join(('MusicCast input <', input_mcid,
-                                               '> not found in device <', self.id, '>.')))
-            else: return None
-        else: # both ids are None
-            if raises:
-                raise mcx.ConfigError(''.join(('No valid arguments in get_input() on device <',
-                                               self.id, '>.')))
-            else: return None
-
-    def sources_by_id(self):
-        ''' Returns the dictionary {id: Source}'''
-        return self._sources_d
-
-    def get_feature(self, flist):
-        ''' Returns a branch from the getFeatures tree.
-
-        This method retrieves a branch or leaf from a JSON type object.
-        The argument is a list made of strings and/or pairs of string.
-        For each string, the method expect to find a dictionary as the next branch,
-        and selects the value (which is another branch or leaf) returned by that string as key.
-        For each pair (key, value), it expects to find an array or similar objects,
-        and in that case it searches for the array that contains the right 'value' for that 'key'.
-
-        This method helps in reading the responses from Yamaha MusicCast API.
-
-        Args:
-            flist: list representing a leaf or a branch from a JSON type of string
-
-        Raises:
-            CommsError, ConfigError.
-        '''
-        branch = self._features
-        if isinstance(flist, basestring): # Python 3: isinstance(arg, str)
-            flist = (flist,)
-        for arg in flist:
-            if isinstance(arg, basestring):
-                try: branch = branch[arg]
-                except KeyError:
-                    raise mcx.ConfigError(''.join(('Argument <', str(arg),
-                                                   '> not found in current branch: ',
-                                                   str(branch))))
-                except TypeError:
-                    raise mcx.CommsError(''.join(('The current branch is not a dictionary: ',
-                                                  str(branch))))
-            else: # assume arg is a pair (key, value)
-                try:
-                    key = arg[0]
-                    value = arg[1]
-                except (IndexError, TypeError):
-                    raise mcx.CommsError(''.join(('Argument <', str(arg), '> should be a pair.')))
-                found = False
-                for obj in branch: # assume branch is an array
-                    try: found = (obj[key] == value)
-                    except KeyError:
-                        raise mcx.ConfigError(''.join(('Key <', str(key),
-                                                       '> not found in current branch: ',
-                                                       str(branch))))
-                    except TypeError:
-                        raise mcx.CommsError(''.join(('The current branch is not a dictionary: ',
-                                                      str(branch))))
-                    if found: break
-                if not found:
-                    raise mcx.ConfigError(''.join(('Value <', str(value),
-                                                   '> for key <', str(key),
-                                                   '> not found in array.')))
-                branch = obj
-        return branch
+        return inp
 
     def init_infotype(self, play_info_type):
         ''' Returns a new or an existing instance of PlayInfoType.
@@ -297,310 +174,409 @@ class Device(object):
         Raises:
             ConfigError: if the play_info_type is not recognised.
         '''
-        if play_info_type in self._mcinfotype_d:
-            return self._mcinfotype_d[play_info_type]
+        if play_info_type in self._infotype_d:
+            return self._infotype_d[play_info_type]
         if play_info_type == 'tuner':
-            self._mcinfotype_d[play_info_type] = Tuner(self)
-            return self._mcinfotype_d[play_info_type]
+            self._infotype_d[play_info_type] = Tuner(self)
+            return self._infotype_d[play_info_type]
         elif play_info_type == 'cd':
-            self._mcinfotype_d[play_info_type] = CD(self)
-            return self._mcinfotype_d[play_info_type]
+            self._infotype_d[play_info_type] = CD(self)
+            return self._infotype_d[play_info_type]
         elif play_info_type == 'netusb':
-            self._mcinfotype_d[play_info_type] = NetUSB(self)
-            return self._mcinfotype_d[play_info_type]
+            self._infotype_d[play_info_type] = NetUSB(self)
+            return self._infotype_d[play_info_type]
+        elif play_info_type == 'none':
+            return None
         else:
-            raise mcx.ConfigError(''.join(('PlayInfoType <', play_info_type, '> does not exist.')))
+            raise mcc.ConfigError(''.join(('PlayInfoType <', play_info_type, '> does not exist.')))
 
-    def find_infotype(self, play_info_type):
+    def get_infotype(self, play_info_type):
         ''' Retrieves the info_type instance.
 
         Only used (for now) by the event lambdas.
         '''
-        try: return self._mcinfotype_d[play_info_type]
+        try: return self._infotype_d[play_info_type]
         except KeyError:
-            raise mcx.ConfigError(''.join(('InfoType <', play_info_type, '> not found.')))
+            raise mcc.ConfigError(''.join(('InfoType <', play_info_type, '> not found.')))
 
-    def find_mczone(self, mcid):
-        ''' Returns the MusicCast zone from its id.
+    def get_feature(self, flist):
+        ''' Returns a branch from the getFeatures tree.
 
-        Needed by the event processor, it is called by the lambdas.
-        This is redundant with get_zone() but probably faster.
+        This method retrieves a branch or leaf from a JSON type object.
+        The argument is a list made of strings and/or pairs of string.
+        For each string, the method expect to find a dictionary as the next branch,
+        and selects the value (which is another branch or leaf) returned by that string as key.
+        For each single key dictionary {key: value}, it expects to find an array or similar objects,
+        and in that case it searches for the array that contains the right 'value' for that 'key'.
+
+        This method helps in reading the responses from Yamaha MusicCast API.
 
         Args:
-            mcid (string): MusicCast id of the zone.  Normally one of ``main``,
-                ``zone2``, ``zone3``, ``zone4``.  See list ``_ZONES``.
+            flist: list representing a leaf or a branch from a JSON type of string
 
         Raises:
-            ConfigError: if the zone is not found, either because it is not a
-                valid zone or because it does not exist in this device.
+            CommsError, ConfigError.
+
+        Example:
+            Use get_feature(('zone', {'id': 'main'}, 'range_step', {'id': 'volume'}, 'max'))
+            to retrieve
         '''
-        try: return self._mczone_d[mcid]
-        except KeyError:
-            raise mcx.ConfigError(''.join(('MusicCast zone <', mcid, '> not found in device <',
-                                           self.id, '>.')))
-
-    def refresh(self):
-        ''' Refresh status of device.
-
-        There are 2 reasons why one needs to refresh the status of a device:
-
-        1- because the MusicCast devices need to receive at least one request every 10 minutes
-           (with the right headers) so that they keep sending events;
-
-        2- when this gateway has sent a **set** command and it is good to check if the command
-           has indeed *delivered*.  It seems though that one needs to wait a bit before requesting
-           a fresh status as experience shows that firing a **getStatus** request straight after a
-           command does not reflect the change even if the command is supposed to be successful.
-
-        '''
-        now = time.time()
-        # check if the device is online
-        if not self._ready: # try to initialise MusicCast device at regular intervals
-            if now - self._load_time > _INIT_LAG:
-                self.load_musiccast()
-            return # return anyway. at best the device just went ready, at worst it failed again.
-        # check if a request has been made *too* recently
-        if now - self.conn.request_time < _BUFFER_LAG:
-            return
-        # check if there are zones that have requested a status refresh
-        for _count in range(self._zone_num):
-            zone = self.zones[self._zone_index]
-            self._zone_index = (self._zone_index + 1) % self._zone_num
-            if zone.status_requested: # status refresh has been requested
-                _logger.debug('Refresh status on request.')
-                zone.refresh_status()
-                return
-        # check if it is time to refresh the device so it keeps sending the events
-        if now - self.conn.request_time > _STALE_CONNECTION:
-            _logger.debug('Refreshing the connection after long inactivity.')
-            zone = self.zones[self._zone_index]
-            self._zone_index = (self._zone_index + 1) % self._zone_num
-            try: zone.refresh_status()
-            except mcx.AnyError: pass # TODO: improve here, otherwise it is going to retry at every loop
-            return
-
-class PlayInfoType(object):
-    '''Represents information that is not source specific in Yamaha API.
-
-    Some of the information about sources in MusicCast devices are only available for groups of
-    sources, and not source by source.  This is true for the **netusb** type, which covers a wide
-    range of sources (*server*, *net_radio*, and all streaming services).  This information can not
-    be stored on a source by source basis but in an ad-hoc structure that sources will link to.
-    For any device, there can be only one instance of each type (**cd**, **tuner** and **netusb**)
-    so the instantiation of these classes is triggered by the Source object initialisation, that
-    finds out of what type it is and then calls a sort of factory method within the parent Device
-    object that then decides to instantiate a new object if it does not exist yet or returns the
-    existing object (a sort of singleton pattern).
-
-    Args:
-        play_info_type (string): one of **tuner**, **cd**, or **netusb**.
-        device (Device object): parent device of the source.
-    '''
-
-    def __init__(self, play_info_type, device):
-        self.type = play_info_type
-        self.device = device
-        self.play_info = None
-        self._preset_separate = False
-        self._max_presets = 0
-
-    def update_play_info(self):
-        ''' Retrieves the play_info structure.
-
-        The sources involved in this command are **tuner**, **cd**, and all
-        sources part of the **netusb** group.
-        '''
-        self.play_info = self.device.conn.mcrequest(self.type, 'getPlayInfo')
-
-    def update_preset_info(self):
-        ''' Retrieves the preset_info structure.
-
-        The `getPresetInfo` request involves only types **tuner** and **netusb**. Treatment in
-        either case is different, see the Yamaha doc for details. This method is supposed to be
-        overridden in both cases.
-        '''
-        raise mcx.LogicError(''.join(('Type <', self.type, '> does not have preset info.')))
-
-    def update_play_time(self, value):
-        ''' Updates the play_time attribute with the new value.
-
-        Only concerns MusicCast types **cd** and **netusb**.
-        The **play_time** event get sent every second by MusicCast devices
-        once a cd or a streaming service starts playing.
-
-        Args:
-            value (integer in string form): the new value of play_time.
-        '''
-        raise mcx.LogicError(''.join(('Type <', self.type, '> does not have play time info.')))
-
-    def update_play_message(self, value):
-        ''' Updates the play_message attribute with the new value.
-
-         This event only applies to the **netusb** group.
-
-        Args:
-            value (string): the new value of play_message.
-        '''
-        raise mcx.LogicError(''.join(('Type <', self.type, '> does not have play message info.')))
-
-    def get_preset_arguments(self, source, preset_num):
-        ''' Returns a dictionary with the preset information.
-
-        Args:
-            source (:class:`Source`): the source with the preset information
-            preset_num (int): the preset number to retrieve
-        '''
-        raise mcx.LogicError(''.join(('Source ', source.mcid, ' does not have presets.')))
-
-class Tuner(PlayInfoType):
-    ''' Tuner specific information.
-
-    Args:
-        device (Device object): parent device.
-    '''
-
-    def __init__(self, device):
-        super(Tuner, self).__init__('tuner', device)
-        # Resolve the _preset_separate and the _info_bands
-        preset_type = self.device.get_feature(('tuner', 'preset', 'type'))
-        if preset_type == 'separate': self._preset_separate = True
-        else: self._preset_separate = False
-        if self._preset_separate:
-            func_list = self.device.get_feature(('tuner', 'func_list'))
-            self._info_bands = [band for band in func_list if band in ('am', 'fm', 'dab')]
-        # load the max_preset
-        try: self._max_presets = int(self.device.get_feature(('tuner', 'preset', 'num')))
-        except ValueError:
-            raise mcx.LogicError('getFeatures item <max_presets> not an int.')
-        # Load the preset_info
-        self._preset_info = None
-        self.update_preset_info()
-        return
-
-    def update_preset_info(self):
-        ''' Retrieves the preset_info structure.
-
-        Info type == **tuner**: the request requires a `band` argument that depends on the
-        features of the device.  As the structure returned by the request is a list of objects that
-        always include the band that the preset relates to, we can concatenate all the preset lists.
-        '''
-
-        if self._preset_separate:
-            preset_info = []
-            for band in self._info_bands:
-                response = self.device.conn.mcrequest('tuner',
-                                                      ''.join(('getPresetInfo?band=', band)))
-                try: preset_info.extend(response['preset_info'])
+        branch = self._features
+        if isinstance(flist, basestring): # Python 3: isinstance(arg, str)
+            flist = (flist,)
+        for arg in flist:
+            if isinstance(arg, basestring):
+                try: branch = branch[arg]
                 except KeyError:
-                    raise mcx.CommsError('getPresetInfo did not return a preset_info field.')
-            self._preset_info = preset_info # update attribute only after all worked properly
-        else:
-            response = self.device.conn.mcrequest('tuner', 'getPresetInfo?band=common')
-            try: self._preset_info = response['preset_info']
+                    raise mcc.ConfigError(''.join(('Argument <', str(arg),
+                                                   '> not found in current branch: ',
+                                                   str(branch))))
+                except TypeError:
+                    raise mcc.CommsError(''.join(('The current branch is not a dictionary: ',
+                                                  str(branch))))
+
+            elif isinstance(arg, dict) and len(arg) == 1: # arg is a single key dictionary
+                key, value = arg.items()[0]
+                try:
+                    _ = iter(branch)
+                except TypeError:
+                    raise mcc.ConfigError(''.join(('The current branch is not an array: ',
+                                                   str(branch))))
+                obj = None
+                found = False
+                for obj in branch:
+                    try: found = (obj[key] == value)
+                    except KeyError:
+                        raise mcc.ConfigError(''.join(('Key <', str(key),
+                                                       '> not found in current branch: ',
+                                                       str(obj))))
+                    except TypeError:
+                        raise mcc.ConfigError(''.join(('The current branch is not a dictionary: ',
+                                                       str(obj))))
+                    if found: break
+                if obj is None:
+                    raise mcc.ConfigError(''.join(('The current branch has no length: ',
+                                                   str(branch))))
+                if not found:
+                    raise mcc.ConfigError(''.join(('Value <', str(value), '> for key <',
+                                                   str(key), '> not found in array.')))
+                branch = obj
+            else: # unrecognised token
+                raise mcc.ConfigError(''.join(('Unrecognised token: ', str(arg))))
+        return branch
+
+    def is_ready(self, raises=False):
+        ''' Returns True if the device is ready to be operated.
+
+        Args:
+            raises (boolean): if True, raises an exception when device is not ready, otherwise
+                it just returns False.
+
+        Returns:
+            boolean: True if device is ready, False if not and `raises` is False.
+
+        Raises:
+            LogicError: if the device is not ready and the `raises` argument is True.
+        '''
+        if self._ready: return True
+        elif raises: raise mcc.LogicError(''.join(('The device ', self.name(), ' is not available.')))
+        else: return False
+
+    def disable(self):
+        ''' Disables the device to make requests. Can be called more than once.'''
+        self.conn.disable()
+        return
+
+    def insert_delayed_request(self, delay, zone):
+        ''' Inserts a delayed request in the appropriate list.'''
+        if delay < 0: return
+        delayed_time = time.time() + delay
+        request = {'time': delayed_time, 'zone': zone}
+        index = 0
+        for item in self._delayed_request_list:
+            if delayed_time > item['time']: break
+            index += 1
+        self._delayed_request_list.insert(index, request)
+        return
+
+    def _device_loop(self):
+        ''' Main thread for a new device.'''
+
+        LOG.debug('Entered the _device_loop method.')
+        process_error = False
+
+        try:
+            self._init_device()
+        except (mcc.CommsError, mcc.ConfigError) as err:
+            LOG.debug(''.join(('_init_device has failed with error:', str(err))))
+            process_error = True # any error during initialisation and the device is out
+
+        # TODO: improve the error processing with retries
+        while not process_error: # here any error during operation and the device is out
+            now = time.time()
+            # process the delayed request list.
+            while True: # check first for items that are already too old
+                try:
+                    request = self._delayed_request_list[0]
+                except IndexError: # list empty
+                    break
+                if request['time'] > (now + 0.01): # TODO: put in constant
+                    break # request is in the future
+                # here the request has already passed; put it in the queue for immediate execution
+                self.task_queue.put(mcc.DeviceTask(mcc.DeviceTask.REFRESH_STATUS,
+                                                   zone=request['zone']))
+                del self._delayed_request_list[0]
+            try:
+                timeout_request = self._delayed_request_list[0]
+            except IndexError: # list empty
+                self.insert_delayed_request(delay=mcc.STALE_CONNECTION, zone=self.zones[0])
+                timeout_request = self._delayed_request_list[0]
+            timeout = timeout_request['time'] - time.time()
+            # wait for an item in the queue
+            try:
+                item = self.task_queue.get(block=True, timeout=timeout)
+            except Queue.Empty: # timed out
+                continue # the next loop will put the timeout request in the queue as it will be old
+
+                #===================================================================================
+                # try: # refresh the connection
+                #     timeout_request['zone'].refresh_status()
+                #     self._zone_index = (self._zone_index + 1) % self._zone_num # next zone
+                # except (mcc.CommsError, mcc.ConfigError):
+                #     process_error = True
+                #     continue
+                # del self._delayed_request_list[0]
+                # continue
+                #===================================================================================
+            self.task_queue.task_done()
+            # switch on task
+            if item.task == mcc.DeviceTask.PROCESS_EVENT:
+                try:
+                    self.process_event(item.event)
+                except (mcc.CommsError, mcc.ConfigError):
+                    process_error = True
+                    continue
+            elif item.task == mcc.DeviceTask.PROCESS_MESSAGE:
+                try:
+                    self.process_message(item.msg, item.zone)
+                except (mcc.CommsError, mcc.ConfigError):
+                    process_error = True
+                    continue
+            elif item.task == mcc.DeviceTask.DISABLE_DEVICE:
+                self.disable()
+            elif item.task == mcc.DeviceTask.REFRESH_STATUS:
+                try:
+                    item.zone.refresh_status()
+                except (mcc.CommsError, mcc.ConfigError):
+                    process_error = True
+                    continue
+            else: # unrecognised task
+                continue
+
+        LOG.debug('Device has failed. Ending _device_loop.')
+        # if we are here it means that there was a process error and the device is terminated
+        self.disable()
+        # make sure the device is removed from the list of devices
+        self._device_factory_queue.put(mcc.DeviceHandle(mcc.DeviceHandle.DELETE,
+                                                        device_id=self._device_mcid))
+        return # this will end this thread
+
+    def _init_device(self):
+        ''' Initialise the device within its own thread.
+
+        Raises:
+            CommsError, ConfigError.
+        '''
+
+        self.conn = musiccastComm(self._host, self._api_port, self._listenport)
+
+        # Retrieve the device info and load them
+        self._dev_info = self.conn.mcrequest('system', 'getDeviceInfo')
+        try:
+            device_id = self._dev_info['device_id'].upper()
+            self._serial_num = self._dev_info['system_id']
+            self._model = self._dev_info['model_name']
+        except KeyError:
+            raise mcc.CommsError('getDeviceInfo does not have the expected structure.')
+        if self._device_mcid != device_id: # sanity check
+            raise mcc.ConfigError('getDeviceInfo does not yield the expected device_id.')
+
+        # Retrieve the device features
+        self._features = self.conn.mcrequest('system', 'getFeatures')
+
+        # Create the zones
+        for zone_data in self.get_feature('zone'):
+            zone = Zone(zone_data, self)
+            if zone.zone_mcid == 'main': # ensure first in the list is 'main'
+                self.zones.insert(0, zone)
+            else:
+                self.zones.append(zone)
+            self.zone_d[zone.zone_mcid] = zone # update the helper dictionary
+        if not self.zones:
+            raise mcc.ConfigError(''.join(('Device <', self.name(), '> has no zones.')))
+        self.zones = tuple(self.zones) # 'freeze' the list in a tuple
+
+        # Create the inputs, sources and feeds
+        for input_data in self.get_feature(('system', 'input_list')):
+            try:
+                play_info_type = input_data['play_info_type']
             except KeyError:
-                raise mcx.CommsError('getPresetInfo did not return a preset_info field.')
+                mcc.CommsError('getFeatures does not have the expected structure.')
+            if play_info_type == 'none':
+                feed = Feed(input_data, self)
+                self.feeds.append(feed)
+            else:
+                source = Source(input_data, self)
+                self.sources.append(source)
+        self.feeds = tuple(self.feeds)
+        self.sources = tuple(self.sources)
+        self.inputs = self.feeds + self.sources
+        if not self.inputs:
+            raise mcc.ConfigError(''.join(('Device <', self.name(), '> has no inputs.')))
+        self._inputs_d = {inp.input_mcid:inp for inp in self.inputs}
+
+        # success
+        self._ready = True
+        self._load_time = time.time() # time of initialisation for future reference
+        LOG.debug(''.join(('Initialisation of device <', self.name(), '> successful.')))
+
         return
 
-    def get_preset_arguments(self, source, preset_num):
-        ''' Returns a dictionary with the preset information.
+    def process_event(self, event):
+        ''' Processes the event received and executes whatever lambdas found.
 
-        Args:
-            source (:class:`Source`): the source with the preset information
-            preset_num (int): the preset number to retrieve
+        This method parses the event through a function and dictionary in musiccast_data that
+        walks through the event ad matches every step with the template event dictionary.
+        When it reaches the leaf, a set of lambdas are found to be executed.
         '''
-        args = {}
-        if self._preset_separate:
-            args['band'] = 'dab' # for now that's the only preset we want to use.
-            # TODO: include other bands selection.
-        else: args['band'] = 'common'
-        if preset_num < 1 or preset_num > self._max_presets:
-            raise mcx.LogicError(''.join(('Preset ', str(preset_num), ' is out of range.')))
-        args['preset_num'] = str(preset_num)
-        return args
+        func_list = musiccastDevice.parse_event(event)
+        # now execute the lambdas
+        while True:
+            try: func, arg = func_list.pop(0)
+            except IndexError: break
+            try: func(self, arg)
+            except mcc.AnyError as err:
+                LOG.info(''.join(('Problem processing event item. Ignore.\n\tError: ',
+                                      repr(err))))
+        return
 
-class CD(PlayInfoType):
-    ''' CD specifc information.
+    def process_message(self, msg, zone):
+        ''' Processes the incoming message, passing it to the relevant zone.
 
-    Args:
-        device (Device object): parent device.
+        This method simply handles the incoming message to the right zone.
+        '''
+        self._msg = msg # update the attribute to give access to the lambdas
+        response, reason = zone.execute_action(msg)
+        if response:
+            self._msgl_out.push(self._msg.reply(response, reason))
+        return
+
+    @staticmethod
+    def parse_event(event):
+        ''' Reads event dictionary and returns lambdas for each key match found.'''
+        flist = [] # list of all lambdas to call; the elements are pairs (func, arg)
+        for key1 in event:
+            try: isdict = isinstance(musiccastDevice.EVENTS[key1], dict)
+            except KeyError:
+                LOG.info(''.join(('Event has an unknown item <', str(key1), '>. Ignore.')))
+                continue
+            if isdict:
+                if not isinstance(event[key1], dict):
+                    raise mcc.ConfigError('Unexpected structure of event. Ignore.')
+                for key2 in event[key1]:
+                    try: func = musiccastDevice.EVENTS[key1][key2]
+                    except KeyError:
+                        LOG.info(''.join(('Unknown item in event <', str(key2), '>. Ignore.')))
+                        continue
+                    if func is not None: flist.append((func, event[key1][key2]))
+            else:
+                func = musiccastDevice.EVENTS[key1]
+                if func is not None: flist.append((func, event[key1]))
+        return flist
+
+    EVENTS = { # lambdas to be called by a Device object; value is always a string
+        'system': {
+            'bluetooth_info_updated': None, # not implemented; use 'getBluetoothInfo'
+            'func_status_updated': None, # not implemented; use 'getFuncStatus'
+            'speaker_settings_updated': None, # not implemented
+            'name_text_updated': None, # not implemented; use 'getNameText'
+            'tag_updated': None, # not implemented
+            'location_info_updated': None, # not implemented; use 'getLocationInfo'
+            'stereo_pair_info_updated': None # not implemented
+        },
+        'main': {
+            'power': lambda self, value: self.get_zone('main', True).update_power(mcvalue=value),
+            'input': lambda self, value: self.get_zone('main', True).update_input(mcvalue=value),
+            'volume': lambda self, value: self.get_zone('main', True).update_volume(mcvalue=value),
+            'mute': lambda self, value: self.get_zone('main', True).update_mute(mcvalue=value),
+            'status_updated': lambda self, value:
+                              self.get_zone('main', True).refresh_status() if value else None,
+            'signal_info_updated': None # not implemented; use 'getSignalInfo'
+        },
+        'zone2': {
+            'power': lambda self, value: self.get_zone('zone2', True).update_power(mcvalue=value),
+            'input': lambda self, value: self.get_zone('zone2', True).update_input(mcvalue=value),
+            'volume': lambda self, value: self.get_zone('zone2', True).update_volume(mcvalue=value),
+            'mute': lambda self, value: self.get_zone('zone2', True).update_mute(mcvalue=value),
+            'status_updated': lambda self, value:
+                              self.get_zone('zone2', True).refresh_status() if value else None,
+            'signal_info_updated': None, # not implemented; use 'getSignalInfo'
+        },
+        'zone3': {},
+        'zone4': {},
+        'tuner': {
+            'play_info_updated': lambda self, value:
+                                 self.get_infotype('tuner').update_play_info() if value else None,
+            'preset_info_updated': lambda self, value:
+                                   self.get_infotype('tuner').update_preset_info() if value else None,
+        },
+        'netusb': {
+            'play_error': None, # TODO: implement
+            'multiple_play_errors': None, # TODO: implement
+            'play_message': lambda self, value:
+                            self.get_infotype('netusb').update_play_message(value),
+            'account_updated': None, # not implemented; use 'getAccountStatus'
+            'play_time': lambda self, value:
+                         self.get_infotype('netusb').update_play_time(value),
+            'preset_info_updated': lambda self, value:
+                                   self.get_infotype('netusb').update_preset_info() if value else None,
+            'recent_info_updated': None, # not implemented; use 'getRecentInfo'
+            'preset_control': None, # not implemented; read the value field for info
+            # value is a dict:
+            #    {'type': ['store', 'clear', 'recall'],
+            #     'num': int,
+            #     'result': ['success' (for all types),'error' (for all types),
+            #                'empty' (only for recall),
+            #                'not_found' (only for recall)]}
+            # Implementing this event might be needed to detect if the 'station'
+            #   has been changed; hopefully if this happens it also triggers a
+            #   'play_info_updated' event, which IS implemented, so we don't need
+            #   this one.
+            'trial_status': None, # not implemented
+            # value = {'input': (string), 'enable': (boolean)}
+            'trial_time_left': None, # not implemented
+            # value = {'input': (string), 'time': (int)}
+            'play_info_updated': lambda self, value:
+                                 self.get_infotype('netusb').update_play_info() if value else None,
+            'list_info_updated': None # not implemented; use 'getListInfo'
+        },
+        'cd': {
+            'device_status': None, # not implemented; use 'cd_status'
+            'play_time': lambda self, value:
+                         self.get_infotype('cd').update_play_time(value),
+            'play_info_updated': lambda self, value:
+                                 self.get_infotype('cd').update_play_info() if value else None,
+        },
+        'dist': {
+            'dist_info_updated': None # not implemented
+        },
+        'clock': {
+            'settings_updated': None # not implemented
+        },
+        'device_id': None
+    }
     '''
+    Dictionary to decode incoming events.
 
-    def __init__(self, device):
-        super(CD, self).__init__('cd', device)
-        self._play_time = '0'
-
-    def update_play_time(self, value):
-        ''' Updates the play_time attribute with the new value.
-
-        Args:
-            value (integer in string form): the new value of play_time.
-        '''
-        self._play_time = value
-
-class NetUSB(PlayInfoType):
-    '''NetUSB specific information.
-
-    Args:
-        device (Device object): parent device.
+    The lambdas should be called by a :class:`Device` object.
     '''
-    def __init__(self, device):
-        super(NetUSB, self).__init__('netusb', device)
-        self._preset_info = None
-        self._play_time = '0'
-        self._play_message = ''
-        # load the max_preset
-        try: self._max_presets = int(self.device.get_feature(('netusb', 'preset', 'num')))
-        except ValueError:
-            raise mcx.CommsError('getFeatures item <max_presets> not an int.')
-        # Load the preset_info
-        self._preset_info = None
-        self.update_preset_info()
-        return
-
-    def update_preset_info(self):
-        ''' Retrieves the preset_info structure.
-
-        Info type == **netusb**: the request is sent *as is* and the structure
-        returned includes a list of objects where one of fields indicates the
-        input that the preset relate to (I am not sure what the input can be
-        anything else that **net_radio** though).
-        '''
-        self._preset_info = self.device.conn.mcrequest(self.type, 'getPresetInfo')
-
-    def update_play_time(self, value):
-        ''' Updates the play_time attribute with the new value.
-
-        Note: There is an uncertainty on which source is playing when the type is **netusb**.  The
-        event does not give any extra information.  It probably means that there can only be one
-        source that can play at any given time in the **netusb** group, even if there are multiple
-        zones in the device.
-
-        Args:
-            value (integer in string form): the new value of play_time.
-        '''
-        self._play_time = value
-
-    def update_play_message(self, value):
-        ''' Updates the play_message attribute with the new value.
-
-        Args:
-            value (string): the new value of play_message.
-        '''
-        self._play_message = value
-        return
-
-    def get_preset_arguments(self, source, preset_num):
-        ''' Returns a dictionary with the preset information.
-
-        Args:
-            source (:class:`Source`): the source with the preset information
-            preset_num (int): the preset number to retrieve
-        '''
-        args = {}
-        if source.mcid == 'net_radio': args['band'] = ''
-        else: # source.mcid not 'net_radio'
-            raise mcx.LogicError(''.join(('Source ', source.mcid, ' does not have presets.')))
-        if preset_num < 1 or preset_num > self._max_presets:
-            raise mcx.LogicError(''.join(('Preset ', str(preset_num), ' is out of range.')))
-        args['preset_num'] = str(preset_num)
-        return args
