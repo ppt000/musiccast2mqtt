@@ -15,7 +15,7 @@ or use a virtual environment.
 
 .. code::
 
-    pip install --user musicast2mqtt
+    pip install --user musiccast2mqtt
 
 
 Execution
